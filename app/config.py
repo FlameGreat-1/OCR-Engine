@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     ALLOWED_EXTENSIONS: set = {"pdf", "jpg", "jpeg", "png", "zip"}
     TEMP_FILE_DIR: str = Field(default="/tmp", env="TEMP_FILE_DIR")
 
+    # CORS Configuration
+    ALLOWED_ORIGINS: List[str] = Field(default=["*"], env="ALLOWED_ORIGINS")
+    ALLOWED_HOSTS: List[str] = Field(default=["*"], env="ALLOWED_HOSTS")
+
     # Processing Configuration
     MULTI_PAGE_THRESHOLD: float = 0.95  # 95% confidence for multi-page detection
     INVOICE_NUMBER_ACCURACY: float = 0.95  # 95% accuracy for invoice number extraction
