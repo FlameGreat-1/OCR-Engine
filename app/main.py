@@ -24,6 +24,10 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi import Request
+   
+ from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import secrets
 
 
 
@@ -169,6 +173,23 @@ async def get_anomalies(task_id: str, api_key: str = Depends(get_api_key)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+ 
+security = HTTPBasic()
+
+def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, "admin")
+    correct_password = secrets.compare_digest(credentials.password, "password")
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+@app.get("/api-key")
+def read_api_key(username: str = Depends(get_current_username)):
+    return {"api_key": settings.X_API_KEY}
     
 # Set up templates and static files
 templates = Jinja2Templates(directory="template")

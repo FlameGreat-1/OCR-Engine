@@ -44,6 +44,8 @@ XlsxWriter==3.0.2
 # Asynchronous programming
 aiohttp==3.7.4.post0
 async-timeout==3.0.1
+aiofiles
+aiofiles
 
 # Logging and error tracking
 sentry-sdk==1.4.3

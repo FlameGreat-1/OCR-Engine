@@ -74,6 +74,14 @@
             border: 1px solid #ddd;
             border-radius: 4px;
         }
+        #api-key-status {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -84,6 +92,7 @@
         </nav>
     </header>
     <main>
+        <div id="api-key-status"></div>
         <section id="file-upload">
             <h2>File Upload</h2>
             <form id="upload-form" enctype="multipart/form-data">
@@ -103,6 +112,6 @@
             <div id="result-content"></div>
         </section>
     </main>
-    <script src="script.js"></script>
+    <script src="script.js" defer></script>
 </body>
 </html>

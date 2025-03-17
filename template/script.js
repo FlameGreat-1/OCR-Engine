@@ -1,12 +1,35 @@
 // script.js
 
-document.addEventListener('DOMContentLoaded', () => {
+let apiKey;
+
+async function getApiKey() {
+    try {
+        const response = await fetch('/api-key');
+        if (response.ok) {
+            const data = await response.json();
+            return data.api_key;
+        } else {
+            throw new Error('Failed to get API key');
+        }
+    } catch (error) {
+        console.error('Error fetching API key:', error);
+        return null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
     const uploadForm = document.getElementById('upload-form');
     const fileInput = document.getElementById('file-input');
     const uploadButton = document.getElementById('upload-button');
     const resultContent = document.getElementById('result-content');
     const progressBar = document.getElementById('progress-bar');
     const progressText = document.getElementById('progress-text');
+
+    // Fetch API key when the page loads
+    apiKey = await getApiKey();
+    if (!apiKey) {
+        alert('Failed to initialize API key. Some features may not work.');
+    }
 
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -33,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST',
                 body: formData,
                 headers: {
-                    'X-API-Key': 'rnd_0NsClIKTf41W5ULBwvdVkmSac0uE' 
+                    'X-API-Key': apiKey
                 }
             });
 
@@ -49,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
             while (!processingComplete) {
                 const statusResponse = await fetch(`/status/${taskId}`, {
                     headers: {
-                        'X-API-Key': 'your-api-key-here' // Replace with actual API key
+                        'X-API-Key': apiKey
                     }
                 });
                 const statusResult = await statusResponse.json();
@@ -69,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch results
             const resultsResponse = await fetch(`/download/${taskId}`, {
                 headers: {
-                    'X-API-Key': 'your-api-key-here' // Replace with actual API key
+                    'X-API-Key': apiKey
                 }
             });
 
@@ -91,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch and display validation results
             const validationResponse = await fetch(`/validation/${taskId}`, {
                 headers: {
-                    'X-API-Key': 'your-api-key-here' // Replace with actual API key
+                    'X-API-Key': apiKey
                 }
             });
             const validationResults = await validationResponse.json();
@@ -100,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fetch and display anomalies
             const anomaliesResponse = await fetch(`/anomalies/${taskId}`, {
                 headers: {
-                    'X-API-Key': 'your-api-key-here' // Replace with actual API key
+                    'X-API-Key': apiKey
                 }
             });
             const anomalies = await anomaliesResponse.json();
