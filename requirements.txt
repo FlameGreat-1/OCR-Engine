@@ -15,6 +15,7 @@ Pillow==8.3.2
 pytesseract==0.3.8
 opencv-python-headless==4.5.3.56
 pdf2image==1.16.0
+PyMuPDF==1.18.14
 
 # NLP and text processing
 spacy==3.1.3
