@@ -26,13 +26,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Download spaCy model
 RUN python -m spacy download en_core_web_sm
 
-# Copy the current directory contents into the container
-COPY . .
-
-COPY google_credentials.json /app/google_credentials.json
-
-# Create a non-root user and switch to it
+# Create a non-root user
 RUN adduser --disabled-password --gecos '' appuser
+
+# Copy the current directory contents into the container
+COPY --chown=appuser:appuser . .
+
+# Copy and set permissions for Google credentials
+COPY --chown=appuser:appuser google_credentials.json /app/google_credentials.json
+RUN chmod 600 /app/google_credentials.json
+
+# Switch to non-root user
 USER appuser
 
 # Make port available to the world outside this container
