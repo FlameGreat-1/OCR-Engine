@@ -159,6 +159,10 @@ async def get_anomalies(task_id: str, api_key: str = Depends(get_api_key)):
     anomalies = celery_task.info.get('anomalies', [])
     return anomalies
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application is starting up")
