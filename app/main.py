@@ -20,6 +20,13 @@ import logging
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi import Request
+
+
+
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 
 # Add middleware
@@ -162,6 +169,15 @@ async def get_anomalies(task_id: str, api_key: str = Depends(get_api_key)):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+    
+# Set up templates and static files
+templates = Jinja2Templates(directory="template")
+
+app.mount("/static", StaticFiles(directory="template"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse("testing_ui.html", {"request": request})
 
 @app.on_event("startup")
 async def startup_event():

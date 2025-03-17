@@ -32,6 +32,9 @@ RUN adduser --disabled-password --gecos '' appuser
 # Copy the current directory contents into the container
 COPY --chown=appuser:appuser . .
 
+# Copy the template folder into the container
+COPY --chown=appuser:appuser template /app/template
+
 # Copy and set permissions for Google credentials
 COPY --chown=appuser:appuser google_credentials.json /app/google_credentials.json
 RUN chmod 600 /app/google_credentials.json
@@ -44,3 +47,4 @@ EXPOSE $PORT
 
 # Run the application
 CMD gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.main:app
+
