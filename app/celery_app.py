@@ -12,6 +12,7 @@ import shutil
 import logging
 from contextlib import contextmanager
 import asyncio
+import psutil
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,8 @@ def managed_temp_dir():
 
 @celery_app.task(bind=True)
 def process_file_task(self, task_id: str, file_path: str):
+    process = psutil.Process()
+    logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")
     with managed_temp_dir() as temp_dir:
         processed_files = []
         try:
@@ -95,9 +98,12 @@ def process_file_task(self, task_id: str, file_path: str):
             for file in processed_files:
                 if os.path.exists(file):
                     os.remove(file)
+    logger.info(f"Memory usage at end of task: {process.memory_info().rss / 1024 / 1024} MB")
 
 @celery_app.task(bind=True)
 def process_multiple_files_task(self, task_id: str, file_paths: List[str]):
+    process = psutil.Process()
+    logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")
     with managed_temp_dir() as temp_dir:
         processed_files = []
         try:
@@ -164,6 +170,7 @@ def process_multiple_files_task(self, task_id: str, file_paths: List[str]):
             for file in processed_files:
                 if os.path.exists(file):
                     os.remove(file)
+    logger.info(f"Memory usage at end of task: {process.memory_info().rss / 1024 / 1024} MB")
 
 celery_app.conf.task_routes = {
     'app.celery_app.process_file_task': {'queue': 'single_file'},
@@ -177,10 +184,12 @@ celery_app.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
+    worker_concurrency=settings.CELERY_WORKER_CONCURRENCY,
+    worker_max_tasks_per_child=settings.CELERY_WORKER_MAX_TASKS_PER_CHILD,
+    worker_prefetch_multiplier=settings.CELERY_WORKER_PREFETCH_MULTIPLIER,
+    result_backend=settings.CELERY_RESULT_BACKEND,
+    broker_url=settings.CELERY_BROKER_URL
 )
-
-# Optional: Configure Celery to use a results backend
-# celery_app.conf.result_backend = 'redis://localhost:6379/0'
 
 if __name__ == '__main__':
     celery_app.start()

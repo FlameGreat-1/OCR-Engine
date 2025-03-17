@@ -47,6 +47,7 @@ aiohttp==3.7.4.post0
 async-timeout==3.0.1
 aiofiles
 aiofiles
+psutil
 
 # Logging and error tracking
 sentry-sdk==1.4.3
