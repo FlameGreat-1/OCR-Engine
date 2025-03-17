@@ -30,7 +30,8 @@ torch==1.9.1
 transformers==4.11.3
 
 # Google Cloud Vision
-google-cloud-vision==2.4.2
+google-cloud-documentai==2.15.0
+google-cloud-vision==3.4.4
 
 # File handling and compression
 python-magic==0.4.24
