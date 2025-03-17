@@ -29,6 +29,8 @@ RUN python -m spacy download en_core_web_sm
 # Copy the current directory contents into the container
 COPY . .
 
+COPY google_credentials.json /app/google_credentials.json
+
 # Create a non-root user and switch to it
 RUN adduser --disabled-password --gecos '' appuser
 USER appuser
