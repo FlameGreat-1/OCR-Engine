@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     MULTI_PAGE_THRESHOLD: float = 0.95  # 95% confidence for multi-page detection
     INVOICE_NUMBER_ACCURACY: float = 0.95  # 95% accuracy for invoice number extraction
     TOTAL_MATH_ACCURACY: float = 1.0  # 100% accuracy for total calculations
-    MAX_WORKERS: int = 5  # or any other appropriate number
+    MAX_WORKERS: int = Field(default=2, env="MAX_WORKERS")  # Reduced from 5 to 2
 
     # Output Configuration
     OUTPUT_FORMATS: List[str] = Field(default=["csv", "excel"])
@@ -43,9 +43,14 @@ class Settings(BaseSettings):
     # Celery Configuration
     CELERY_BROKER_URL: str = Field(..., env="CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND: str = Field(..., env="CELERY_RESULT_BACKEND")
+    CELERY_WORKER_CONCURRENCY: int = Field(default=2, env="CELERY_WORKER_CONCURRENCY")
+    CELERY_WORKER_MAX_TASKS_PER_CHILD: int = Field(default=10, env="CELERY_WORKER_MAX_TASKS_PER_CHILD")
+    CELERY_WORKER_PREFETCH_MULTIPLIER: int = Field(default=1, env="CELERY_WORKER_PREFETCH_MULTIPLIER")
 
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
+    LOG_FILE: str = Field(default="/var/log/app.log", env="LOG_FILE")
+    LOG_ROTATION: str = Field(default="500 MB", env="LOG_ROTATION")
 
     class Config:
         env_file = ".env"
