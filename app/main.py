@@ -74,33 +74,46 @@ async def upload_files(files: List[UploadFile] = File(...), api_key: str = Depen
 
     try:
         for file in files:
+            logger.info(f"Processing file: {file.filename}, Content-Type: {file.content_type}")
             if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "application/zip"]:
+                logger.warning(f"Unsupported file type: {file.content_type}")
                 raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
             
             file_path = os.path.join(temp_dir, file.filename)
-            with open(file_path, "wb") as buffer:
-                content = await file.read()
-                buffer.write(content)
-            file_paths.append(file_path)
+            try:
+                with open(file_path, "wb") as buffer:
+                    content = await file.read()
+                    buffer.write(content)
+                file_paths.append(file_path)
+                logger.info(f"File saved successfully: {file_path}")
+            except IOError as e:
+                logger.error(f"Error saving file {file.filename}: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Error saving file {file.filename}")
 
         if len(files) == 1:
-            # Single file processing
+            logger.info(f"Processing single file: {file_paths[0]}")
             celery_task = process_file_task.delay(task_id, file_paths[0])
         else:
-            # Multiple files processing
+            logger.info(f"Processing multiple files: {file_paths}")
             celery_task = process_multiple_files_task.delay(task_id, file_paths)
         
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Processing started")
+        logger.info(f"Task {task_id} queued for processing")
         
         return ProcessingRequest(task_id=task_id)
     except Exception as e:
-        logger.error(f"Error during file upload: {str(e)}")
-        raise HTTPException(status_code=500, detail="An error occurred during file upload")
+        logger.error(f"Unexpected error during file upload: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during file upload: {str(e)}")
     finally:
-        # Clean up temporary files if an error occurred
+        # Clean up temporary files
         for file_path in file_paths:
             if os.path.exists(file_path):
-                os.remove(file_path)
+                try:
+                    os.remove(file_path)
+                    logger.info(f"Temporary file removed: {file_path}")
+                except OSError as e:
+                    logger.warning(f"Error removing temporary file {file_path}: {str(e)}")
+
 
 @app.get("/status/{task_id}", response_model=ProcessingResponse)
 async def get_processing_status(task_id: str, api_key: str = Depends(get_api_key)):
