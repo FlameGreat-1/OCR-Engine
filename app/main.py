@@ -64,6 +64,18 @@ def get_api_key(api_key: str = Depends(api_key_header)):
         raise HTTPException(status_code=403, detail="Could not validate API key")
     return api_key
 
+def get_file_type(filename):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == '.pdf':
+        return "application/pdf"
+    elif ext in ['.jpg', '.jpeg']:
+        return "image/jpeg"
+    elif ext == '.png':
+        return "image/png"
+    elif ext == '.zip':
+        return "application/zip"
+    return None
+
 @app.post("/upload/", response_model=ProcessingRequest)
 async def upload_files(files: List[UploadFile] = File(...), api_key: str = Depends(get_api_key)):
     task_id = str(uuid.uuid4())
@@ -75,9 +87,10 @@ async def upload_files(files: List[UploadFile] = File(...), api_key: str = Depen
     try:
         for file in files:
             logger.info(f"Processing file: {file.filename}, Content-Type: {file.content_type}")
-            if file.content_type not in ["application/pdf", "image/jpeg", "image/png", "application/zip"]:
-                logger.warning(f"Unsupported file type: {file.content_type}")
-                raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
+            file_type = file.content_type or get_file_type(file.filename)
+            if not file_type or file_type not in ["application/pdf", "image/jpeg", "image/png", "application/zip"]:
+                logger.warning(f"Unsupported file type: {file_type}")
+                raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_type}")
             
             file_path = os.path.join(temp_dir, file.filename)
             try:
