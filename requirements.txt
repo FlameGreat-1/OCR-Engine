@@ -1,0 +1,64 @@
+# FastAPI and related
+fastapi==0.68.1
+uvicorn==0.15.0
+python-multipart==0.0.5
+pydantic==1.8.2
+celery==5.1.2
+redis==3.5.3
+
+# Data processing and analysis
+numpy==1.21.2
+pandas==1.3.3
+
+# OCR and image processing
+Pillow==8.3.2
+pytesseract==0.3.8
+opencv-python-headless==4.5.3.56
+pdf2image==1.16.0
+
+# NLP and text processing
+spacy==3.1.3
+en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.1.0/en_core_web_sm-3.1.0.tar.gz
+dateparser==1.0.0
+price-parser==0.3.4
+usaddress==0.5.10
+pycountry==20.7.3
+
+# Machine learning and deep learning
+torch==1.9.1
+transformers==4.11.3
+layoutlm==0.0.1
+
+# Google Cloud Vision
+google-cloud-vision==2.4.2
+
+# File handling and compression
+python-magic==0.4.24
+zipfile36==0.1.3
+
+# Excel handling
+openpyxl==3.0.9
+XlsxWriter==3.0.2
+
+# Hugging Face and Gradio
+gradio==2.4.0
+huggingface-hub==0.0.19
+
+# Asynchronous programming
+aiohttp==3.7.4.post0
+async-timeout==3.0.1
+
+# Logging and error tracking
+sentry-sdk==1.4.3
+
+# Testing
+pytest==6.2.5
+pytest-asyncio==0.15.1
+
+# Development tools
+black==21.9b0
+flake8==3.9.2
+isort==5.9.3
+
+# Production deployment
+gunicorn==20.1.0

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: invoice-processor
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.main:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
+      - key: X_API_KEY
+        sync: false
