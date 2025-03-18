@@ -11,6 +11,9 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import dateparser
 from price_parser import Price
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential
+import aioredis
 
 logger = logging.getLogger(__name__)
 
@@ -19,23 +22,52 @@ class DataExtractor:
         self.gcv_client = vision.ImageAnnotatorClient()
         self.docai_client = documentai.DocumentProcessorServiceClient()
         self.executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
+        self.redis = None
 
-    async def extract_data(self, ocr_result: Dict) -> Invoice:
+    async def initialize(self):
+        self.redis = await aioredis.create_redis_pool(settings.REDIS_URL)
+
+    async def extract_data(self, ocr_results: List[Dict]) -> List[Invoice]:
         try:
-            if ocr_result.get("is_multipage", False):
-                return await self._extract_multipage_data(ocr_result)
-            else:
-                return await self._extract_single_page_data(ocr_result)
+            start_time = time.time()
+            results = await asyncio.gather(*[self._extract_single_result(result) for result in ocr_results])
+            end_time = time.time()
+            logger.info(f"Extracted data for {len(ocr_results)} documents in {end_time - start_time:.2f} seconds")
+            return results
         except Exception as e:
             logger.error(f"Error extracting data: {str(e)}")
+            return [Invoice(filename=result.get("filename", ""), error=str(e)) for result in ocr_results]
+
+    async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
+        cache_key = f"extracted:{hash(str(ocr_result))}"
+        cached_result = await self.redis.get(cache_key)
+        if cached_result:
+            logger.info(f"Cache hit for {ocr_result.get('filename', '')}")
+            return Invoice.parse_raw(cached_result)
+
+        try:
+            start_time = time.time()
+            if ocr_result.get("is_multipage", False):
+                invoice = await self._extract_multipage_data(ocr_result)
+            else:
+                invoice = await self._extract_single_page_data(ocr_result)
+            end_time = time.time()
+            logger.info(f"Extracted data for {ocr_result.get('filename', '')} in {end_time - start_time:.2f} seconds")
+
+            await self.redis.set(cache_key, invoice.json(), expire=86400)  # Cache for 24 hours
+            return invoice
+        except Exception as e:
+            logger.error(f"Error extracting data for {ocr_result.get('filename', '')}: {str(e)}")
             return Invoice(filename=ocr_result.get("filename", ""), error=str(e))
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_multipage_data(self, ocr_result: Dict) -> Invoice:
         document = documentai.Document(content=ocr_result['content'], mime_type='application/pdf')
         request = documentai.ProcessRequest(name=settings.DOCAI_PROCESSOR_NAME, document=document)
         response = await asyncio.to_thread(self.docai_client.process_document, request)
         return self._parse_docai_response(response.document, ocr_result.get("filename", ""))
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_single_page_data(self, ocr_result: Dict) -> Invoice:
         image = vision.Image(content=ocr_result['content'])
         response = await asyncio.to_thread(self.gcv_client.document_text_detection, image)
@@ -115,8 +147,16 @@ class DataExtractor:
         )
 
     def _extract_invoice_number(self, text: str) -> str:
-        match = re.search(r'(?i)invoice\s*number?[:\s]*([A-Za-z0-9-]{5,})', text)
-        return match.group(1) if match else ""
+        patterns = [
+            r'(?i)invoice\s*number?[:\s]*([A-Za-z0-9-]{5,})',
+            r'(?i)invoice\s*#[:\s]*([A-Za-z0-9-]{5,})',
+            r'(?i)inv[:\s]*([A-Za-z0-9-]{5,})'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1)
+        return ""
 
     def _extract_vendor(self, document) -> Vendor:
         for page in document.pages:
@@ -140,21 +180,44 @@ class DataExtractor:
         )
 
     def _extract_date(self, text: str) -> datetime:
-        match = re.search(r'(?i)date[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})', text)
-        if match:
-            return self._parse_date(match.group(1))
+        patterns = [
+            r'(?i)date[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
+            r'(?i)invoice\s*date[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
+            r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return self._parse_date(match.group(1))
         return datetime.now()
 
     def _extract_totals(self, text: str) -> Tuple[Decimal, Decimal, Decimal]:
-        grand_total_match = re.search(r'(?i)subtotal[:\s]*\$([\d,]+\.\d{2})', text)
-        tax_match = re.search(r'(?i)tax[:\s]*\$([\d,]+\.\d{2})', text)
-        final_total_match = re.search(r'(?i)total[:\s]*\$([\d,]+\.\d{2})', text)
+        patterns = {
+            'grand_total': [
+                r'(?i)subtotal[:\s]*\$([\d,]+\.\d{2})',
+                r'(?i)sub\s*total[:\s]*\$([\d,]+\.\d{2})'
+            ],
+            'tax': [
+                r'(?i)tax[:\s]*\$([\d,]+\.\d{2})',
+                r'(?i)vat[:\s]*\$([\d,]+\.\d{2})'
+            ],
+            'final_total': [
+                r'(?i)total[:\s]*\$([\d,]+\.\d{2})',
+                r'(?i)grand\s*total[:\s]*\$([\d,]+\.\d{2})'
+            ]
+        }
         
-        grand_total = self._parse_decimal(grand_total_match.group(1) if grand_total_match else '0.00')
-        taxes = self._parse_decimal(tax_match.group(1) if tax_match else '0.00')
-        final_total = self._parse_decimal(final_total_match.group(1) if final_total_match else '0.00')
-
-        return grand_total, taxes, final_total
+        results = {}
+        for key, pattern_list in patterns.items():
+            for pattern in pattern_list:
+                match = re.search(pattern, text)
+                if match:
+                    results[key] = self._parse_decimal(match.group(1))
+                    break
+            if key not in results:
+                results[key] = Decimal('0.00')
+        
+        return results['grand_total'], results['tax'], results['final_total']
 
     def _extract_items(self, document) -> List[InvoiceItem]:
         items = []
@@ -188,4 +251,18 @@ class DataExtractor:
             logger.warning(f"Could not parse decimal: {amount_string}")
             return Decimal('0.00')
 
+    async def cleanup(self):
+        self.executor.shutdown(wait=True)
+        if self.redis:
+            self.redis.close()
+            await self.redis.wait_closed()
+
 data_extractor = DataExtractor()
+
+# Initialization function to be called at application startup
+async def initialize_data_extractor():
+    await data_extractor.initialize()
+
+# Cleanup function to be called at application shutdown
+async def cleanup_data_extractor():
+    await data_extractor.cleanup()

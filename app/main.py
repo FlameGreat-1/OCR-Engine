@@ -23,6 +23,8 @@ from app.utils.exporter import export_invoices
 from app.models import Invoice, ProcessingStatus
 from app.celery_app import process_file_task, process_multiple_files_task
 from celery.result import AsyncResult
+from celery.result import AsyncResult
+from app.celery_app import celery_app
 
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 
@@ -180,6 +182,22 @@ async def get_anomalies(task_id: str, api_key: str = Depends(get_api_key)):
     
     anomalies = celery_task.info.get('anomalies', [])
     return anomalies
+
+@app.post("/cancel/{task_id}")
+async def cancel_task(task_id: str, api_key: str = Depends(get_api_key)):
+    if task_id not in processing_tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    celery_task = AsyncResult(task_id, app=celery_app)
+    
+    if celery_task.state in ['PENDING', 'STARTED']:
+        celery_app.control.revoke(task_id, terminate=True)
+        processing_tasks[task_id] = ProcessingStatus(status="Cancelled", progress=0, message="Task cancelled by user")
+        return {"status": "Task cancelled successfully"}
+    elif celery_task.state in ['SUCCESS', 'FAILURE']:
+        return {"status": "Task already completed or failed, cannot cancel"}
+    else:
+        return {"status": "Unable to cancel task, unknown state"}
 
 @app.get("/health")
 async def health_check():

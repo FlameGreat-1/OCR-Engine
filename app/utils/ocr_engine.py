@@ -5,11 +5,14 @@ import logging
 from google.cloud import vision, documentai_v1 as documentai
 import cv2
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from app.config import settings
 from app.models import ProcessingStatus, Invoice, Vendor, Address, InvoiceItem
 from decimal import Decimal
 from datetime import datetime
+import aioredis
+from tenacity import retry, stop_after_attempt, wait_exponential
+import time
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,34 +21,51 @@ class OCREngine:
     def __init__(self):
         self.gcv_client = vision.ImageAnnotatorClient()
         self.docai_client = documentai.DocumentProcessorServiceClient()
-        self.cache = {}
-        self.executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
+        self.redis = None
+        self.thread_executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
+        self.process_executor = ProcessPoolExecutor(max_workers=settings.MAX_WORKERS)
+
+    async def initialize(self):
+        self.redis = await aioredis.create_redis_pool(settings.REDIS_URL)
 
     async def process_documents(self, documents: List[Dict[str, any]]) -> Dict[str, Dict]:
         results = {}
         total_documents = len(documents)
+        start_time = time.time()
         
         async def process_batch(batch):
             batch_results = await asyncio.gather(*[self._process_document(doc) for doc in batch])
             return {doc['filename']: result for doc, result in zip(batch, batch_results)}
 
-        batches = [documents[i:i+settings.BATCH_SIZE] for i in range(0, len(documents), settings.BATCH_SIZE)]
+        optimal_batch_size = max(1, min(settings.BATCH_SIZE, total_documents // settings.MAX_WORKERS))
+        batches = [documents[i:i+optimal_batch_size] for i in range(0, len(documents), optimal_batch_size)]
         
         for index, batch in enumerate(batches, 1):
             batch_results = await process_batch(batch)
             results.update(batch_results)
             
-            processed_count = min(index * settings.BATCH_SIZE, total_documents)
+            processed_count = min(index * optimal_batch_size, total_documents)
             status = await self.update_processing_status(total_documents, processed_count)
             logger.info(f"Processing status: {status.dict()}")
 
+        end_time = time.time()
+        processing_time = end_time - start_time
+        logger.info(f"Total processing time: {processing_time:.2f} seconds")
+        logger.info(f"Average time per document: {processing_time/total_documents:.2f} seconds")
+
         return results
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _process_document(self, document: Dict[str, any]) -> Dict:
         try:
-            cache_key = hash(document['content'])
-            if cache_key in self.cache:
-                return self.cache[cache_key]
+            cache_key = f"ocr:{hash(document['content'])}"
+            cached_result = await self.redis.get(cache_key)
+            if cached_result:
+                logger.info(f"Cache hit for document: {document['filename']}")
+                return eval(cached_result)
+
+            logger.info(f"Processing document: {document['filename']}")
+            start_time = time.time()
 
             if document['is_multipage']:
                 ocr_result = await self._process_multipage(document)
@@ -53,18 +73,19 @@ class OCREngine:
                 ocr_result = await self._process_single_page(document)
 
             extracted_data = await self._extract_structured_data(ocr_result)
-            self.cache[cache_key] = extracted_data
+            await self.redis.set(cache_key, str(extracted_data), expire=86400)  # Cache for 24 hours
+
+            end_time = time.time()
+            processing_time = end_time - start_time
+            logger.info(f"Document {document['filename']} processed in {processing_time:.2f} seconds")
+
             return extracted_data
         except Exception as e:
             logger.error(f"Error processing {document['filename']}: {str(e)}")
-            return {"error": str(e)}
+            raise  # This will trigger the retry mechanism
 
     async def _process_multipage(self, document: Dict[str, any]) -> Dict:
-        results = []
-        for page in document['pages']:
-            page_result = await self._process_single_page({'content': page['content'], 'filename': page['filename']})
-            results.append(page_result)
-
+        results = await asyncio.gather(*[self._process_single_page({'content': page['content'], 'filename': f"{document['filename']}_page{i}"}) for i, page in enumerate(document['pages'], 1)])
         return {
             "pages": results,
             "is_multipage": True,
@@ -77,19 +98,21 @@ class OCREngine:
         
         try:
             preprocessed_image = await self._preprocess_image(image_bytes)
-            ocr_result = await self._process_with_gcv(image_name, preprocessed_image)
-            layout_result = await self._analyze_layout(preprocessed_image)
+            ocr_result, layout_result = await asyncio.gather(
+                self._process_with_gcv(image_name, preprocessed_image),
+                self._analyze_layout(preprocessed_image)
+            )
             ocr_result.update(layout_result)
             return ocr_result
         except Exception as e:
             logger.error(f"Error in single page processing for {image_name}: {str(e)}")
-            return {"error": str(e)}
+            raise  # This will trigger the retry mechanism
 
     async def _preprocess_image(self, image_bytes: bytes) -> bytes:
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self.executor, self._preprocess_image_sync, image_bytes)
+        return await asyncio.get_event_loop().run_in_executor(self.process_executor, self._preprocess_image_sync, image_bytes)
 
-    def _preprocess_image_sync(self, image_bytes: bytes) -> bytes:
+    @staticmethod
+    def _preprocess_image_sync(image_bytes: bytes) -> bytes:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -125,7 +148,7 @@ class OCREngine:
             }
         except Exception as e:
             logger.error(f"Google Cloud Vision API error for {image_name}: {str(e)}")
-            return {"error": f"GCV API error: {str(e)}"}
+            raise  # This will trigger the retry mechanism
 
     async def _analyze_layout(self, image_bytes: bytes) -> Dict:
         image = vision.Image(content=image_bytes)
@@ -134,7 +157,7 @@ class OCREngine:
             return self._parse_layout(response)
         except Exception as e:
             logger.error(f"Layout analysis error: {str(e)}")
-            return {"error": f"Layout analysis error: {str(e)}"}
+            raise  # This will trigger the retry mechanism
 
     def _parse_layout(self, response) -> Dict:
         layout = {"tables": [], "key_value_pairs": []}
@@ -166,6 +189,7 @@ class OCREngine:
             return {key.strip(): value.strip()}
         return None
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_structured_data(self, ocr_result: Dict) -> Dict:
         try:
             # Use Document AI to extract structured data
@@ -178,7 +202,7 @@ class OCREngine:
             return invoice.dict()
         except Exception as e:
             logger.error(f"Error extracting structured data: {str(e)}")
-            return {"error": f"Structured data extraction error: {str(e)}"}
+            raise  # This will trigger the retry mechanism
 
     def _parse_docai_response(self, document) -> Invoice:
         entities = {e.type_: e.mention_text for e in document.entities}
@@ -225,4 +249,19 @@ class OCREngine:
             message=f"Processed {processed_documents} out of {total_documents} documents"
         )
 
+    async def cleanup(self):
+        self.thread_executor.shutdown(wait=True)
+        self.process_executor.shutdown(wait=True)
+        if self.redis:
+            self.redis.close()
+            await self.redis.wait_closed()
+
 ocr_engine = OCREngine()
+
+# Initialization function to be called at application startup
+async def initialize_ocr_engine():
+    await ocr_engine.initialize()
+
+# Cleanup function to be called at application shutdown
+async def cleanup_ocr_engine():
+    await ocr_engine.cleanup()

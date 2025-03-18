@@ -3,9 +3,12 @@ fastapi==0.95.0
 uvicorn==0.15.0
 python-multipart==0.0.5
 pydantic==1.8.2
+jinja2==3.1.2
+
+# Celery and related
 celery==5.1.2
 redis==3.5.3
-jinja2==3.1.2
+flower==1.0.0
 
 # Data processing and analysis
 numpy==1.21.2
@@ -30,7 +33,7 @@ pycountry==20.7.3
 torch==1.9.1
 transformers==4.11.3
 
-# Google Cloud Vision
+# Google Cloud Vision and Document AI
 google-cloud-documentai==2.15.0
 google-cloud-vision==3.4.4
 
@@ -45,18 +48,23 @@ XlsxWriter==3.0.2
 # Asynchronous programming
 aiohttp==3.7.4.post0
 async-timeout==3.0.1
-aiofiles
-aiofiles
-psutil
+aiofiles==0.8.0
+aioredis==2.0.1
+
+# System utilities
+psutil==5.8.0
+
+# Error handling and retries
+tenacity==8.0.1
+
+# Rate limiting
+ratelimit==2.2.1
 
 # Logging and error tracking
 sentry-sdk==1.4.3
 
-# Supervisor (for process management)
+# Process management
 supervisor==4.2.2
-
-# Flower (optional, for Celery monitoring)
-flower==1.0.0
 
 # Testing
 pytest==6.2.5

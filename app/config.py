@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # Render-specific Configuration
     PORT: int = Field(default=10000, env="PORT")
     RENDER_URL: str = Field(..., env="RENDER_URL")
+    REDIS_URL: str = Field(..., env="REDIS_URL")    
 
     # Database Configuration (for potential future use)
     DATABASE_URL: Optional[str] = Field(default=None, env="DATABASE_URL")
@@ -46,6 +47,28 @@ class Settings(BaseSettings):
     CELERY_WORKER_CONCURRENCY: int = Field(default=2, env="CELERY_WORKER_CONCURRENCY")
     CELERY_WORKER_MAX_TASKS_PER_CHILD: int = Field(default=10, env="CELERY_WORKER_MAX_TASKS_PER_CHILD")
     CELERY_WORKER_PREFETCH_MULTIPLIER: int = Field(default=1, env="CELERY_WORKER_PREFETCH_MULTIPLIER")
+
+    # New Celery Beat Configuration
+    CELERY_BEAT_SCHEDULE: dict = Field(default={}, env="CELERY_BEAT_SCHEDULE")
+    CELERY_BEAT_MAX_LOOP_INTERVAL: int = Field(default=300, env="CELERY_BEAT_MAX_LOOP_INTERVAL")
+
+    # Supervisor Configuration
+    SUPERVISOR_CONFIG_FILE: str = Field(default="/etc/supervisor/conf.d/supervisord.conf", env="SUPERVISOR_CONFIG_FILE")
+
+    # Maintenance Task Configuration
+    CLEANUP_TEMP_FILES_INTERVAL: int = Field(default=86400, env="CLEANUP_TEMP_FILES_INTERVAL")  # 24 hours in seconds
+    CLEANUP_OLD_TASKS_INTERVAL: int = Field(default=604800, env="CLEANUP_OLD_TASKS_INTERVAL")  # 7 days in seconds
+    CLEANUP_OLD_TASKS_AGE: int = Field(default=30, env="CLEANUP_OLD_TASKS_AGE")  # 30 days
+
+    # Monitoring Configuration
+    CHECK_WORKER_STATUS_INTERVAL: int = Field(default=3600, env="CHECK_WORKER_STATUS_INTERVAL")  # 1 hour in seconds
+    CHECK_QUEUE_STATUS_INTERVAL: int = Field(default=900, env="CHECK_QUEUE_STATUS_INTERVAL")  # 15 minutes in seconds
+    CHECK_LONG_RUNNING_TASKS_INTERVAL: int = Field(default=300, env="CHECK_LONG_RUNNING_TASKS_INTERVAL")  # 5 minutes in seconds
+    LONG_RUNNING_TASK_THRESHOLD: int = Field(default=420, env="LONG_RUNNING_TASK_THRESHOLD")  # 7 minutes in seconds
+
+    # Retry Configuration
+    RETRY_FAILED_TASKS_INTERVAL: int = Field(default=1800, env="RETRY_FAILED_TASKS_INTERVAL")  # 30 minutes in seconds
+    MAX_TASK_RETRIES: int = Field(default=3, env="MAX_TASK_RETRIES")
 
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")

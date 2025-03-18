@@ -2,7 +2,7 @@ import os
 import zipfile
 import magic
 from fastapi import UploadFile, HTTPException
-from typing import List, Dict
+from typing import List, Dict, Union
 import fitz  # PyMuPDF
 import io
 import uuid
@@ -12,10 +12,15 @@ from app.config import settings
 from app.models import FileUpload
 from PIL import Image
 import logging
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class FileProcessingError(Exception):
+    """Custom exception for file processing errors"""
+    pass
 
 class FileHandler:
     def __init__(self, upload_dir: str = "/tmp/invoice_uploads"):
@@ -23,6 +28,7 @@ class FileHandler:
         os.makedirs(self.upload_dir, exist_ok=True)
         self.executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def save_upload(self, file: UploadFile) -> FileUpload:
         try:
             content_type = await self._get_content_type(file)
@@ -36,9 +42,13 @@ class FileHandler:
             raise HTTPException(status_code=500, detail="Internal server error while saving file")
 
     async def _get_content_type(self, file: UploadFile) -> str:
-        chunk = await file.read(1024)
-        await file.seek(0)
-        return magic.from_buffer(chunk, mime=True)
+        try:
+            chunk = await file.read(1024)
+            await file.seek(0)
+            return magic.from_buffer(chunk, mime=True)
+        except Exception as e:
+            logger.error(f"Error determining content type: {str(e)}")
+            raise FileProcessingError("Unable to determine file type")
 
     async def _save_file(self, file: UploadFile) -> tuple:
         file_path = os.path.join(self.upload_dir, f"{uuid.uuid4()}_{file.filename}")
@@ -54,7 +64,8 @@ class FileHandler:
         except Exception as e:
             if os.path.exists(file_path):
                 os.remove(file_path)
-            raise e
+            logger.error(f"Error saving file: {str(e)}")
+            raise FileProcessingError(f"Unable to save file: {str(e)}")
 
     async def process_uploads(self, file_uploads: List[FileUpload]) -> List[Dict[str, any]]:
         tasks = [self.process_upload(file_upload) for file_upload in file_uploads]
@@ -67,6 +78,7 @@ class FileHandler:
                 processed_results.extend(result)
         return processed_results
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def process_upload(self, file_upload: FileUpload) -> List[Dict[str, any]]:
         try:
             if file_upload.content_type == 'application/zip':
@@ -77,7 +89,7 @@ class FileHandler:
                 return [await self._process_image(file_upload.filename)]
         except Exception as e:
             logger.error(f"Error processing {file_upload.filename}: {str(e)}")
-            return []
+            raise FileProcessingError(f"Unable to process file {file_upload.filename}: {str(e)}")
 
     async def _process_zip(self, zip_path: str) -> List[Dict[str, any]]:
         loop = asyncio.get_event_loop()
@@ -99,6 +111,7 @@ class FileHandler:
                                     extracted_files.append(self._process_image_content(file_info.filename, content))
         except Exception as e:
             logger.error(f"Error processing zip file {zip_path}: {str(e)}")
+            raise FileProcessingError(f"Unable to process zip file {zip_path}: {str(e)}")
         return extracted_files
 
     async def _process_pdf(self, pdf_path: str) -> List[Dict[str, any]]:
@@ -109,7 +122,7 @@ class FileHandler:
             return await loop.run_in_executor(self.executor, self._process_pdf_content, os.path.basename(pdf_path), content)
         except Exception as e:
             logger.error(f"Error processing PDF {pdf_path}: {str(e)}")
-            return []
+            raise FileProcessingError(f"Unable to process PDF {pdf_path}: {str(e)}")
 
     def _process_pdf_content(self, filename: str, content: bytes) -> List[Dict[str, any]]:
         pages = []
@@ -128,6 +141,7 @@ class FileHandler:
             doc.close()
         except Exception as e:
             logger.error(f"Error processing PDF content {filename}: {str(e)}")
+            raise FileProcessingError(f"Unable to process PDF content {filename}: {str(e)}")
         return [{
             'filename': filename,
             'content': content,
@@ -143,7 +157,7 @@ class FileHandler:
             return await loop.run_in_executor(self.executor, self._process_image_content, os.path.basename(image_path), content)
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {str(e)}")
-            return {}
+            raise FileProcessingError(f"Unable to process image {image_path}: {str(e)}")
 
     def _process_image_content(self, filename: str, content: bytes) -> Dict[str, any]:
         try:
@@ -164,7 +178,7 @@ class FileHandler:
             }
         except Exception as e:
             logger.error(f"Error processing image content {filename}: {str(e)}")
-            return {}
+            raise FileProcessingError(f"Unable to process image content {filename}: {str(e)}")
 
     async def clean_up(self, file_path: str):
         loop = asyncio.get_event_loop()
@@ -176,5 +190,6 @@ class FileHandler:
                 os.remove(file_path)
         except OSError as e:
             logger.error(f"Error deleting file {file_path}: {str(e)}")
+            raise FileProcessingError(f"Unable to delete file {file_path}: {str(e)}")
 
 file_handler = FileHandler()
