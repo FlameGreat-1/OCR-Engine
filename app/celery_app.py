@@ -1,10 +1,12 @@
-from celery import Celery
+from celery import Celery, group, chord
+from celery.exceptions import SoftTimeLimitExceeded
 from app.config import settings
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.data_extractor import data_extractor
 from app.utils.validator import invoice_validator, flag_anomalies
 from app.utils.exporter import export_invoices
+from app.celerybeat_schedule import celery_app as beat_app
 import os
 import tempfile
 from typing import List
@@ -13,6 +15,7 @@ import logging
 from contextlib import contextmanager
 import asyncio
 import psutil
+from functools import partial
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +33,18 @@ def managed_temp_dir():
     finally:
         shutil.rmtree(temp_dir)
 
-@celery_app.task(bind=True)
+def process_chunk(chunk, task_id, temp_dir):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        ocr_results = loop.run_until_complete(ocr_engine.process_documents(chunk))
+        extracted_data = loop.run_until_complete(asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()]))
+        return extracted_data
+    finally:
+        loop.close()
+
+@celery_app.task(bind=True, soft_time_limit=420, time_limit=480)
 def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
     process = psutil.Process()
     logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")
@@ -46,14 +60,15 @@ def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
         logger.info(f"File processed: {file_path}")
         self.update_state(state='PROCESSING', meta={'progress': 20, 'message': 'File processed'})
 
-        loop = asyncio.get_event_loop()
-        ocr_results = loop.run_until_complete(ocr_engine.process_documents(processed_files))
-        logger.info("OCR completed")
-        self.update_state(state='PROCESSING', meta={'progress': 40, 'message': 'OCR completed'})
+        chunk_size = 10  # Adjust based on your needs
+        chunks = [processed_files[i:i + chunk_size] for i in range(0, len(processed_files), chunk_size)]
+        
+        partial_process_chunk = partial(process_chunk, task_id=task_id, temp_dir=temp_dir)
+        chunk_results = group(celery_app.task(partial_process_chunk).s(chunk) for chunk in chunks)()
+        extracted_data = [item for sublist in chunk_results.get() for item in sublist]
 
-        extracted_data = loop.run_until_complete(asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()]))
-        logger.info("Data extraction completed")
-        self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'Data extraction completed'})
+        logger.info("OCR and Data extraction completed")
+        self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'OCR and Data extraction completed'})
 
         validation_results = invoice_validator.validate_invoice_batch(extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
@@ -91,6 +106,10 @@ def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
             'flagged_invoices': len(flagged_invoices)
         })
         
+    except SoftTimeLimitExceeded:
+        logger.error(f"Task {task_id} exceeded time limit")
+        self.update_state(state='FAILURE', meta={'progress': 100, 'message': 'Task exceeded time limit'})
+        raise
     except Exception as e:
         logger.error(f"Error in task {task_id}: {str(e)}", exc_info=True)
         self.update_state(state='FAILURE', meta={'progress': 100, 'message': f'Error: {str(e)}'})
@@ -102,7 +121,7 @@ def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
             logger.info(f"Temporary directory removed: {temp_dir}")
     logger.info(f"Memory usage at end of task: {process.memory_info().rss / 1024 / 1024} MB")
 
-@celery_app.task(bind=True)
+@celery_app.task(bind=True, soft_time_limit=7200, time_limit=7260)
 def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_dir: str):
     process = psutil.Process()
     logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")    
@@ -118,14 +137,15 @@ def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_
             logger.info(f"Processed file {idx + 1} of {len(file_paths)}: {file_path}")
             self.update_state(state='PROCESSING', meta={'progress': progress, 'message': f'Processed {idx + 1} of {len(file_paths)} files'})
 
-        loop = asyncio.get_event_loop()
-        ocr_results = loop.run_until_complete(ocr_engine.process_documents(processed_files))
-        logger.info("OCR completed")
-        self.update_state(state='PROCESSING', meta={'progress': 40, 'message': 'OCR completed'})
+        chunk_size = 5  
+        chunks = [processed_files[i:i + chunk_size] for i in range(0, len(processed_files), chunk_size)]
+        
+        partial_process_chunk = partial(process_chunk, task_id=task_id, temp_dir=temp_dir)
+        chunk_results = group(celery_app.task(partial_process_chunk).s(chunk) for chunk in chunks)()
+        extracted_data = [item for sublist in chunk_results.get() for item in sublist]
 
-        extracted_data = loop.run_until_complete(asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()]))
-        logger.info("Data extraction completed")
-        self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'Data extraction completed'})
+        logger.info("OCR and Data extraction completed")
+        self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'OCR and Data extraction completed'})
 
         validation_results = invoice_validator.validate_invoice_batch(extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
@@ -163,6 +183,10 @@ def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_
             'flagged_invoices': len(flagged_invoices)
         })
         
+    except SoftTimeLimitExceeded:
+        logger.error(f"Task {task_id} exceeded time limit")
+        self.update_state(state='FAILURE', meta={'progress': 100, 'message': 'Task exceeded time limit'})
+        raise
     except Exception as e:
         logger.error(f"Error in task {task_id}: {str(e)}", exc_info=True)
         self.update_state(state='FAILURE', meta={'progress': 100, 'message': f'Error: {str(e)}'})
@@ -195,7 +219,11 @@ celery_app.conf.update(
     worker_max_tasks_per_child=settings.CELERY_WORKER_MAX_TASKS_PER_CHILD,
     worker_prefetch_multiplier=settings.CELERY_WORKER_PREFETCH_MULTIPLIER,
     result_backend=settings.CELERY_RESULT_BACKEND,
-    broker_url=settings.CELERY_BROKER_URL
+    broker_url=settings.CELERY_BROKER_URL,
+    task_track_started=True,
+    task_time_limit=480,  # 2 hours
+    task_soft_time_limit=420,  # 1 minute less than hard limit
+    worker_max_memory_per_child=1000000,  # 1GB, adjust as needed
 )
 
 if __name__ == '__main__':

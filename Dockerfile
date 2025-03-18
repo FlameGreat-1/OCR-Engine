@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtesseract-dev \
     poppler-utils \
     libmagic1 \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -39,10 +40,18 @@ COPY --chown=appuser:appuser template /app/template
 COPY --chown=appuser:appuser google_credentials.json /app/google_credentials.json
 RUN chmod 600 /app/google_credentials.json
 
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create necessary directories for logs
+RUN mkdir -p /var/log/supervisor
+
 # Switch to non-root user
 USER appuser
 
 # Make port available to the world outside this container
 EXPOSE $PORT
 
-CMD gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.main:app & celery -A app.celery_app worker --loglevel=INFO -E
+# Run supervisord
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+
