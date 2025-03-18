@@ -1,12 +1,19 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends
-from fastapi.responses import FileResponse
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends, Request, status
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 import asyncio
 import tempfile
 import os
 import uuid
+import shutil
+import secrets
+import logging
 from app.config import settings
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
@@ -16,20 +23,6 @@ from app.utils.exporter import export_invoices
 from app.models import Invoice, ProcessingStatus
 from app.celery_app import process_file_task, process_multiple_files_task
 from celery.result import AsyncResult
-import logging
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi import Request
-   
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-import secrets
-
-
 
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 
@@ -43,6 +36,7 @@ app.add_middleware(
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
+# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -58,7 +52,7 @@ class ProcessingResponse(BaseModel):
     status: ProcessingStatus
 
 processing_tasks = {}
-    
+
 def get_api_key(api_key: str = Depends(api_key_header)):
     if api_key != settings.X_API_KEY:  
         raise HTTPException(status_code=403, detail="Could not validate API key")
@@ -105,10 +99,10 @@ async def upload_files(files: List[UploadFile] = File(...), api_key: str = Depen
 
         if len(files) == 1:
             logger.info(f"Processing single file: {file_paths[0]}")
-            celery_task = process_file_task.delay(task_id, file_paths[0])
+            celery_task = process_file_task.delay(task_id, file_paths[0], temp_dir)
         else:
             logger.info(f"Processing multiple files: {file_paths}")
-            celery_task = process_multiple_files_task.delay(task_id, file_paths)
+            celery_task = process_multiple_files_task.delay(task_id, file_paths, temp_dir)
         
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Processing started")
         logger.info(f"Task {task_id} queued for processing")
@@ -116,17 +110,8 @@ async def upload_files(files: List[UploadFile] = File(...), api_key: str = Depen
         return ProcessingRequest(task_id=task_id)
     except Exception as e:
         logger.error(f"Unexpected error during file upload: {str(e)}", exc_info=True)
+        shutil.rmtree(temp_dir)  # Clean up in case of error
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred during file upload: {str(e)}")
-    finally:
-        # Clean up temporary files
-        for file_path in file_paths:
-            if os.path.exists(file_path):
-                try:
-                    os.remove(file_path)
-                    logger.info(f"Temporary file removed: {file_path}")
-                except OSError as e:
-                    logger.warning(f"Error removing temporary file {file_path}: {str(e)}")
-
 
 @app.get("/status/{task_id}", response_model=ProcessingResponse)
 async def get_processing_status(task_id: str, api_key: str = Depends(get_api_key)):
@@ -157,7 +142,7 @@ async def download_results(task_id: str, format: str = "csv", api_key: str = Dep
     if celery_task.state != 'SUCCESS':
         raise HTTPException(status_code=400, detail="Processing not completed")
     
-    temp_dir = tempfile.gettempdir()
+    temp_dir = celery_task.info.get('temp_dir', tempfile.gettempdir())
     if format.lower() == "csv":
         file_path = os.path.join(temp_dir, f"{task_id}_invoices.csv")
         media_type = "text/csv"
