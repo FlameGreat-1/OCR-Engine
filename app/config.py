@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # Render-specific Configuration
     PORT: int = Field(default=10000, env="PORT")
     RENDER_URL: str = Field(..., env="RENDER_URL")
-    REDIS_URL: str = Field(..., env="REDIS_URL")    
+    REDIS_URL: str = Field(..., env="CELERY_BROKER_URL")   
 
     # Database Configuration (for potential future use)
     DATABASE_URL: Optional[str] = Field(default=None, env="DATABASE_URL")

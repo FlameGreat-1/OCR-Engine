@@ -30,11 +30,9 @@ RUN python -m spacy download en_core_web_sm
 # Create a non-root user
 RUN adduser --disabled-password --gecos '' appuser
 
-# Give appuser ownership of the /app directory
-RUN chown -R appuser:appuser /app
-
-# Create necessary directories for logs and give appuser ownership
-RUN mkdir -p /var/log/supervisor /var/run && chown -R appuser:appuser /var/log/supervisor /var/run
+# Create necessary directories and set permissions
+RUN mkdir -p /var/log/supervisor /var/run /app/logs && \
+    chown -R appuser:appuser /app /var/log/supervisor /var/run
 
 # Copy the current directory contents into the container
 COPY --chown=appuser:appuser . .
@@ -57,3 +55,4 @@ EXPOSE $PORT
 
 # Run supervisord
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+
