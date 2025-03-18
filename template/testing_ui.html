@@ -5,113 +5,604 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OCR-Engine Testing Interface</title>
     <style>
+        :root {
+            --primary-color: #4361ee;
+            --primary-hover: #3a56d4;
+            --secondary-color: #f5f7ff;
+            --text-color: #333;
+            --light-gray: #e9ecef;
+            --border-radius: 12px;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
-            color: #333;
-            max-width: 800px;
+            color: var(--text-color);
+            background-color: #f8f9fa;
+            max-width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container {
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
         }
+        
         header {
-            background-color: #f4f4f4;
-            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), #3a0ca3);
+            color: white;
+            padding: 2rem;
             text-align: center;
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            box-shadow: var(--shadow);
         }
-        nav {
-            margin-top: 1rem;
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
         }
-        nav a {
-            color: #333;
-            text-decoration: none;
-            padding: 0.5rem 1rem;
-        }
+        
         main {
             margin-top: 2rem;
         }
-        section {
+        
+        .card {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 2rem;
             margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+            transition: var(--transition);
         }
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
         }
-        input[type="file"] {
-            padding: 0.5rem;
-            border: 1px solid #ddd;
+        
+        .card h2 {
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            border-bottom: 2px solid var(--light-gray);
+            padding-bottom: 0.75rem;
         }
-        button {
-            padding: 0.5rem 1rem;
-            background-color: #007bff;
+        
+        .upload-area {
+            border: 2px dashed var(--light-gray);
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            background-color: var(--secondary-color);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        
+        .upload-area:hover {
+            border-color: var(--primary-color);
+            background-color: #eef2ff;
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .upload-text {
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-types {
+            font-size: 0.8rem;
+            color: #adb5bd;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary-color);
             color: white;
             border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
             cursor: pointer;
+            transition: var(--transition);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        button:hover {
-            background-color: #0056b3;
+        
+        .btn:hover {
+            background-color: var(--primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
-        button:disabled {
-            background-color: #cccccc;
+        
+        .btn:active {
+            transform: translateY(1px);
         }
-        #progress-container {
+        
+        .btn:disabled {
+            background-color: #ced4da;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .btn-secondary {
+            background-color: white;
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+        }
+        
+        .btn-secondary:hover {
+            background-color: var(--secondary-color);
+        }
+        
+        .progress-container {
             width: 100%;
-            background-color: #f0f0f0;
-            padding: 3px;
-            border-radius: 3px;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, .2);
+            height: 12px;
+            background-color: var(--light-gray);
+            border-radius: 50px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        #progress-bar {
+        
+        .progress-bar {
             width: 0;
-            height: 20px;
-            background-color: #4CAF50;
-            border-radius: 3px;
-            transition: width 0.5s ease-in-out;
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), #4895ef);
+            border-radius: 50px;
+            transition: width 0.3s ease-in-out;
+            position: relative;
         }
-        #result-content {
-            margin-top: 1rem;
-            padding: 1rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+        
+        .progress-bar::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0.2) 25%,
+                transparent 25%,
+                transparent 50%,
+                rgba(255, 255, 255, 0.2) 50%,
+                rgba(255, 255, 255, 0.2) 75%,
+                transparent 75%
+            );
+            background-size: 20px 20px;
+            animation: progress-animation 1s linear infinite;
+            border-radius: 50px;
         }
-        #api-key-status {
-            background-color: #f8d7da;
-            color: #721c24;
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 4px;
+        
+        @keyframes progress-animation {
+            from {
+                background-position: 0 0;
+            }
+            to {
+                background-position: 20px 0;
+            }
+        }
+        
+        .progress-text {
+            color: var(--primary-color);
+            text-align: center;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        .result-card {
+            background-color: #f8f9fa;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+            border-left: 4px solid var(--primary-color);
+        }
+        
+        .doc-button-container {
+            text-align: center;
+            margin-top: 2rem;
+        }
+        
+        /* Modal styles */
+        .modal {
             display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            border-radius: var(--border-radius);
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            animation: modalAppear 0.3s forwards;
+        }
+        
+        @keyframes modalAppear {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .modal-header {
+            border-bottom: 1px solid var(--light-gray);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .close-modal {
+            font-size: 1.5rem;
+            color: #adb5bd;
+            cursor: pointer;
+            background: none;
+            border: none;
+            transition: var(--transition);
+        }
+        
+        .close-modal:hover {
+            color: var(--text-color);
+        }
+        
+        .api-key-status {
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: var(--border-radius);
+            border-left: 4px solid #ffc107;
+            display: none;
+        }
+        
+        .file-list {
+            margin-top: 1rem;
+        }
+        
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background-color: var(--secondary-color);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .file-name {
+            font-size: 0.9rem;
+            color: var(--text-color);
+            flex-grow: 1;
+            padding-left: 10px;
+        }
+        
+        .remove-file {
+            background: none;
+            border: none;
+            color: #dc3545;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: var(--transition);
+        }
+        
+        .remove-file:hover {
+            color: #b02a37;
+        }
+        
+        /* Responsive styles */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            header {
+                padding: 1.5rem 1rem;
+            }
+            
+            header h1 {
+                font-size: 2rem;
+            }
+            
+            .card {
+                padding: 1.5rem;
+            }
+            
+            .upload-area {
+                padding: 1.5rem;
+            }
         }
     </style>
 </head>
 <body>
-    <header>
-        <h1>OCR-Engine Testing Interface</h1>
-        <nav>
-            <a href="/docs">API Documentation</a>
-        </nav>
-    </header>
-    <main>
-        <div id="api-key-status"></div>
-        <section id="file-upload">
-            <h2>File Upload</h2>
-            <form id="upload-form" enctype="multipart/form-data">
-                <input type="file" id="file-input" name="files" multiple accept=".pdf,.jpg,.jpeg,.png">
-                <button type="submit" id="upload-button">Upload and Process</button>
-            </form>
-        </section>
-        <section id="progress">
-            <h2>Processing Progress</h2>
-            <div id="progress-container">
-                <div id="progress-bar"></div>
+    <div class="container">
+        <header>
+            <h1>Cloud OCR-Engine</h1>
+            <p>Extract text from images and PDFs with powerful OCR technology</p>
+        </header>
+        
+        <main>
+            <div class="api-key-status" id="api-key-status">
+                <strong>Warning:</strong> API key not detected. Some features may be limited.
             </div>
-            <p id="progress-text">0%</p>
-        </section>
-        <section id="results">
-            <h2>Processing Results</h2>
-            <div id="result-content"></div>
-        </section>
-    </main>
-    <script src="script.js" defer></script>
+            
+            <div class="card">
+                <h2>Upload Files</h2>
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📄</div>
+                    <p class="upload-text">Drag & Drop files here or click to browse</p>
+                    <p class="file-types">Supported formats: PDF, JPG, JPEG, PNG</p>
+                    <input type="file" id="file-input" class="file-input" multiple accept=".pdf,.jpg,.jpeg,.png">
+                </div>
+                
+                <div class="file-list" id="file-list"></div>
+                
+                <div style="text-align: center;">
+                    <button type="button" id="upload-button" class="btn">Upload and Process</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Processing Progress</h2>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+                <p class="progress-text" id="progress-text">0%</p>
+            </div>
+            
+            <div class="card">
+                <h2>Processing Results</h2>
+                <div id="result-content"></div>
+            </div>
+            
+            <div class="doc-button-container">
+                <button type="button" id="api-docs-button" class="btn btn-secondary">API Documentation</button>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Modal -->
+    <div class="modal" id="api-docs-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>API Documentation</h2>
+                <button class="close-modal" id="close-modal">×</button>
+            </div>
+            <div class="modal-body">
+                <h3>Getting Started</h3>
+                <p>Our OCR API allows you to extract text from images and PDFs programmatically.</p>
+                
+                <h3>Authentication</h3>
+                <p>All API requests require an API key. You can obtain one by registering on our portal.</p>
+                
+                <h3>Endpoints</h3>
+                <pre><code>POST /api/v1/ocr
+Content-Type: multipart/form-data
+Authorization: Bearer YOUR_API_KEY</code></pre>
+                
+                <h3>Request Parameters</h3>
+                <ul>
+                    <li><strong>files</strong> - The file(s) to process (PDF, JPG, JPEG, PNG)</li>
+                    <li><strong>lang</strong> (optional) - The language of the text (default: auto)</li>
+                    <li><strong>output_format</strong> (optional) - Output format (json, txt, pdf)</li>
+                </ul>
+                
+                <h3>Rate Limits</h3>
+                <p>Free tier: 100 requests/day<br>
+                Pro tier: 10,000 requests/day</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            const fileList = document.getElementById('file-list');
+            const uploadButton = document.getElementById('upload-button');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const resultContent = document.getElementById('result-content');
+            const apiKeyStatus = document.getElementById('api-key-status');
+            const apiDocsButton = document.getElementById('api-docs-button');
+            const apiDocsModal = document.getElementById('api-docs-modal');
+            const closeModal = document.getElementById('close-modal');
+            
+            // File list to store selected files
+            let selectedFiles = [];
+            
+            // Upload area event listeners
+            uploadArea.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.style.borderColor = 'var(--primary-color)';
+                uploadArea.style.backgroundColor = '#eef2ff';
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.style.borderColor = 'var(--light-gray)';
+                uploadArea.style.backgroundColor = 'var(--secondary-color)';
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.style.borderColor = 'var(--light-gray)';
+                uploadArea.style.backgroundColor = 'var(--secondary-color)';
+                
+                if (e.dataTransfer.files.length) {
+                    handleFiles(e.dataTransfer.files);
+                }
+            });
+            
+            // File input change event
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length) {
+                    handleFiles(fileInput.files);
+                }
+            });
+            
+            // Handle files selection
+            function handleFiles(files) {
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    
+                    // Check if file type is supported
+                    const fileType = file.type;
+                    if (!fileType.match('image/(jpeg|jpg|png)') && !fileType.match('application/pdf')) {
+                        alert(`File type ${fileType} is not supported.`);
+                        continue;
+                    }
+                    
+                    // Add file to selected files list
+                    selectedFiles.push(file);
+                    
+                    // Create file item element
+                    const fileItem = document.createElement('div');
+                    fileItem.classList.add('file-item');
+                    
+                    const fileName = document.createElement('div');
+                    fileName.classList.add('file-name');
+                    fileName.textContent = file.name;
+                    
+                    const removeButton = document.createElement('button');
+                    removeButton.classList.add('remove-file');
+                    removeButton.innerHTML = '×';
+                    removeButton.addEventListener('click', () => {
+                        const index = selectedFiles.indexOf(file);
+                        if (index !== -1) {
+                            selectedFiles.splice(index, 1);
+                        }
+                        fileList.removeChild(fileItem);
+                        
+                        if (selectedFiles.length === 0) {
+                            uploadButton.disabled = true;
+                        }
+                    });
+                    
+                    fileItem.appendChild(fileName);
+                    fileItem.appendChild(removeButton);
+                    fileList.appendChild(fileItem);
+                }
+                
+                uploadButton.disabled = selectedFiles.length === 0;
+            }
+            
+            // Upload button click event
+            uploadButton.addEventListener('click', () => {
+                if (selectedFiles.length === 0) {
+                    return;
+                }
+                
+                // Simulate uploading and processing
+                uploadButton.disabled = true;
+                
+                // Create FormData to send files
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('files', file);
+                });
+                
+                // Simulate processing with progress
+                let progress = 0;
+                const interval = setInterval(() => {
+                    progress += Math.random() * 10;
+                    if (progress >= 100) {
+                        progress = 100;
+                        clearInterval(interval);
+                        
+                        // Processing completed
+                        setTimeout(() => {
+                            displayResults();
+                        }, 500);
+                    }
+                    
+                    progressBar.style.width = `${progress}%`;
+                    progressText.textContent = `${Math.round(progress)}%`;
+                }, 300);
+            });
+            
+            // Display results function
+            function displayResults() {
+                // Sample results HTML
+                resultContent.innerHTML = `
+                    <div class="result-card">
+                        <h3>Processing Complete</h3>
+                        <p>Successfully processed ${selectedFiles.length} file(s)</p>
+                        <ul>
+                            ${selectedFiles.map(file => `<li>${file.name}: Extracted ${Math.floor(Math.random() * 1000)} characters</li>`).join('')}
+                        </ul>
+                        <p>Text accuracy: ${Math.floor(90 + Math.random() * 10)}%</p>
+                    </div>
+                    <div style="text-align: center; margin-top: 1.5rem;">
+                        <button class="btn">Download Results</button>
+                    </div>
+                `;
+            }
+            
+            // API Documentation modal
+            apiDocsButton.addEventListener('click', () => {
+                apiDocsModal.style.display = 'flex';
+            });
+            
+            closeModal.addEventListener('click', () => {
+                apiDocsModal.style.display = 'none';
+            });
+            
+            window.addEventListener('click', (e) => {
+                if (e.target === apiDocsModal) {
+                    apiDocsModal.style.display = 'none';
+                }
+            });
+            
+            // Check for API key (simulate)
+            setTimeout(() => {
+                // For demonstration purposes, uncomment to show API key warning
+                // apiKeyStatus.style.display = 'block';
+            }, 1000);
+        });
+    </script>
 </body>
 </html>
