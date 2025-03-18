@@ -50,10 +50,7 @@ class Settings(BaseSettings):
 
     # New Celery Beat Configuration
     CELERY_BEAT_SCHEDULE: dict = Field(default={}, env="CELERY_BEAT_SCHEDULE")
-    CELERY_BEAT_MAX_LOOP_INTERVAL: int = Field(default=300, env="CELERY_BEAT_MAX_LOOP_INTERVAL")
-
-    # Supervisor Configuration
-    SUPERVISOR_CONFIG_FILE: str = Field(default="/etc/supervisor/conf.d/supervisord.conf", env="SUPERVISOR_CONFIG_FILE")
+    CELERY_BEAT_MAX_LOOP_INTERVAL: int = Field(default=300, env="CELERY_BEAT_MAX_LOOP_INTERVAL")   
 
     # Maintenance Task Configuration
     CLEANUP_TEMP_FILES_INTERVAL: int = Field(default=86400, env="CLEANUP_TEMP_FILES_INTERVAL")  # 24 hours in seconds
