@@ -45,7 +45,4 @@ USER appuser
 # Make port available to the world outside this container
 EXPOSE $PORT
 
-# Run both the FastAPI application and Celery worker
-CMD gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.main:app & celery -A app.celery_app worker --loglevel=INFO
-
-
+CMD gunicorn -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.main:app & celery -A app.celery_app worker --loglevel=INFO -E
