@@ -34,7 +34,7 @@ RUN adduser --disabled-password --gecos '' appuser
 RUN chown -R appuser:appuser /app
 
 # Create necessary directories for logs and give appuser ownership
-RUN mkdir -p /var/log/supervisor && chown -R appuser:appuser /var/log/supervisor
+RUN mkdir -p /var/log/supervisor /var/run && chown -R appuser:appuser /var/log/supervisor /var/run
 
 # Copy the current directory contents into the container
 COPY --chown=appuser:appuser . .
