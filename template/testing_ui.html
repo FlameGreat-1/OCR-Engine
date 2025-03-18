@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OCR-Engine Testing Interface</title>
+    <title>Cloud OCR Engine</title>
     <style>
         :root {
             --primary-color: #4361ee;
@@ -357,7 +357,7 @@
     <div class="container">
         <header>
             <h1>Cloud OCR-Engine</h1>
-            <p>Extract text from images and PDFs with powerful OCR technology</p>
+            <p>Extract invoice details and export to csv and excel with powerful OCR tech</p>
         </header>
         
         <main>
@@ -377,12 +377,12 @@
                 <div class="file-list" id="file-list"></div>
                 
                 <div style="text-align: center;">
-                    <button type="button" id="upload-button" class="btn">Upload and Process</button>
+                    <button type="button" id="upload-button" class="btn">Process</button>
                 </div>
             </div>
             
             <div class="card">
-                <h2>Processing Progress</h2>
+                <h2>Progress</h2>
                 <div class="progress-container">
                     <div class="progress-bar" id="progress-bar"></div>
                 </div>
@@ -390,7 +390,7 @@
             </div>
             
             <div class="card">
-                <h2>Processing Results</h2>
+                <h2>Results</h2>
                 <div id="result-content"></div>
             </div>
             
@@ -400,38 +400,7 @@
         </main>
     </div>
     
-    <!-- Modal -->
-    <div class="modal" id="api-docs-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>API Documentation</h2>
-                <button class="close-modal" id="close-modal">×</button>
-            </div>
-            <div class="modal-body">
-                <h3>Getting Started</h3>
-                <p>Our OCR API allows you to extract text from images and PDFs programmatically.</p>
-                
-                <h3>Authentication</h3>
-                <p>All API requests require an API key. You can obtain one by registering on our portal.</p>
-                
-                <h3>Endpoints</h3>
-                <pre><code>POST /api/v1/ocr
-Content-Type: multipart/form-data
-Authorization: Bearer YOUR_API_KEY</code></pre>
-                
-                <h3>Request Parameters</h3>
-                <ul>
-                    <li><strong>files</strong> - The file(s) to process (PDF, JPG, JPEG, PNG)</li>
-                    <li><strong>lang</strong> (optional) - The language of the text (default: auto)</li>
-                    <li><strong>output_format</strong> (optional) - Output format (json, txt, pdf)</li>
-                </ul>
-                
-                <h3>Rate Limits</h3>
-                <p>Free tier: 100 requests/day<br>
-                Pro tier: 10,000 requests/day</p>
-            </div>
-        </div>
-    </div>
+    <!-- Removed modal as we're now using the original link to /docs -->
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
@@ -582,25 +551,15 @@ Authorization: Bearer YOUR_API_KEY</code></pre>
                 `;
             }
             
-            // API Documentation modal
+            // API Documentation button - redirect to /docs as in original code
             apiDocsButton.addEventListener('click', () => {
-                apiDocsModal.style.display = 'flex';
-            });
-            
-            closeModal.addEventListener('click', () => {
-                apiDocsModal.style.display = 'none';
-            });
-            
-            window.addEventListener('click', (e) => {
-                if (e.target === apiDocsModal) {
-                    apiDocsModal.style.display = 'none';
-                }
+                window.location.href = '/docs';
             });
             
             // Check for API key (simulate)
             setTimeout(() => {
                 // For demonstration purposes, uncomment to show API key warning
-                // apiKeyStatus.style.display = 'block';
+                apiKeyStatus.style.display = 'block';
             }, 1000);
         });
     </script>
