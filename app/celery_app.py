@@ -1,12 +1,12 @@
 from celery import Celery, group, chord
 from celery.exceptions import SoftTimeLimitExceeded
+from celery.schedules import crontab
 from app.config import settings
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.data_extractor import data_extractor
 from app.utils.validator import invoice_validator, flag_anomalies
 from app.utils.exporter import export_invoices
-from app.celerybeat_schedule import celery_app as beat_app
 import os
 import tempfile
 from typing import List
@@ -208,6 +208,40 @@ def test_task():
     logger.info("Test task executed successfully")
     return "Success"
 
+# Celery Beat schedule
+celery_app.conf.beat_schedule = {
+    'cleanup-temp-files-daily': {
+        'task': 'app.utils.maintenance.cleanup_temp_files',
+        'schedule': crontab(hour=1, minute=0),
+        'args': (),
+    },
+    'cleanup-old-tasks-weekly': {
+        'task': 'app.utils.maintenance.cleanup_old_tasks',
+        'schedule': crontab(day_of_week=0, hour=2, minute=0),
+        'args': (30,),
+    },
+    'check-worker-status-hourly': {
+        'task': 'app.utils.maintenance.check_worker_status',
+        'schedule': crontab(minute=0),
+        'args': (),
+    },
+    'check-queue-status-every-15-minutes': {
+        'task': 'app.utils.maintenance.check_queue_status',
+        'schedule': crontab(minute='*/15'),
+        'args': (),
+    },
+    'retry-failed-tasks-every-30-minutes': {
+        'task': 'app.utils.maintenance.retry_failed_tasks',
+        'schedule': crontab(minute='*/30'),
+        'args': (),
+    },
+    'check-long-running-tasks-every-5-minutes': {
+        'task': 'app.utils.maintenance.check_long_running_tasks',
+        'schedule': crontab(minute='*/5'),
+        'args': (420,),
+    },
+}
+
 # Celery configuration
 celery_app.conf.update(
     task_serializer='json',
@@ -221,9 +255,10 @@ celery_app.conf.update(
     result_backend=settings.CELERY_RESULT_BACKEND,
     broker_url=settings.CELERY_BROKER_URL,
     task_track_started=True,
-    task_time_limit=480,  # 2 hours
-    task_soft_time_limit=420,  # 1 minute less than hard limit
+    task_time_limit=480,  # 8 minutes
+    task_soft_time_limit=420,  # 7 minutes
     worker_max_memory_per_child=1000000,  # 1GB, adjust as needed
+    beat_max_loop_interval=300,  # 5 minutes
 )
 
 if __name__ == '__main__':
