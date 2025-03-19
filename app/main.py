@@ -92,7 +92,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
     try:
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Starting processing")
         
-        processed_files = file_handler.process_upload(file_path)
+        processed_files = await file_handler.process_upload(file_path)
         logger.info(f"File processed: {file_path}")
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=20, message="File processed")
         
@@ -172,7 +172,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         
         processed_files = []
         for idx, file_path in enumerate(file_paths):
-            processed_files.extend(file_handler.process_upload(file_path))
+            processed_files.extend(await file_handler.process_upload(file_path))
             progress = (idx + 1) / len(file_paths) * 20
             logger.info(f"Processed file {idx + 1} of {len(file_paths)}: {file_path}")
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
