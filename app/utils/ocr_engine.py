@@ -201,16 +201,25 @@ class OCREngine:
 
     def _extract_table(self, block) -> List[List[str]]:
         table = []
-        for row in block.paragraphs:
+        
+        for paragraph in block.paragraphs:
             table_row = []
-            for cell in row.words:
-                cell_text = ''.join([symbol.text for symbol in cell.symbols])
+            for word in paragraph.words:
+                cell_text = ''.join([symbol.text for symbol in word.symbols])
                 table_row.append(cell_text)
-            table.append(table_row)
+            if table_row:  # Only add non-empty rows
+                table.append(table_row)
         return table
 
     def _extract_key_value_pair(self, block) -> Dict[str, str]:
-        text = ''.join([''.join([symbol.text for symbol in word.symbols]) for word in block.words])
+        
+        text = ""
+        for paragraph in block.paragraphs:
+            paragraph_text = ''.join([''.join([symbol.text for symbol in word.symbols]) 
+                                     for word in paragraph.words])
+            text += paragraph_text + " "
+        
+        text = text.strip()
         if ':' in text:
             key, value = text.split(':', 1)
             return {key.strip(): value.strip()}
@@ -266,7 +275,7 @@ class OCREngine:
             final_total=Decimal(entities.get('total_amount', '0')),
             items=items,
             pages=len(document.pages)
-        )
+        )           
 
     async def update_processing_status(self, total_documents: int, processed_documents: int) -> ProcessingStatus:
         progress = (processed_documents / total_documents) * 100
