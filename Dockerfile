@@ -52,8 +52,9 @@ EXPOSE 10000
 # Set memory limit for Gunicorn workers
 ENV GUNICORN_CMD_ARGS="--workers=2 --worker-class=uvicorn.workers.UvicornWorker --timeout=300 --max-requests=1000 --max-requests-jitter=50"
 
-# Run the application with uvicorn directly for better error logging
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "${PORT:-10000}", "--log-level", "debug"]
+# Use shell form to allow variable substitution
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000} --log-level debug
+
 
 # Run the application with smaller footprint
 #CMD gunicorn --bind 0.0.0.0:${PORT:-10000} app.main:app \
