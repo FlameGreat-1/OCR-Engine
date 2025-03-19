@@ -67,6 +67,54 @@ class FileHandler:
             logger.error(f"Error saving file: {str(e)}")
             raise FileProcessingError(f"Unable to save file: {str(e)}")
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+    async def process_upload(self, file_upload):
+        try:
+            if isinstance(file_upload, str):
+                file_path = file_upload
+                file_name = os.path.basename(file_path)
+                ext = os.path.splitext(file_name)[1].lower()
+                if ext == '.zip':
+                    return await self._process_zip(file_path)
+                elif ext == '.pdf':
+                    return await self._process_pdf(file_path)
+                else:
+                    return [file_path]
+            else:
+                if file_upload.content_type == 'application/zip':
+                    temp_dir = tempfile.mkdtemp()
+                    zip_path = os.path.join(temp_dir, file_upload.filename)
+                    
+                    with open(zip_path, 'wb') as f:
+                        content = await file_upload.read()
+                        f.write(content)
+                    
+                    return await self._process_zip(zip_path)
+                elif file_upload.content_type == 'application/pdf':
+                    temp_dir = tempfile.mkdtemp()
+                    file_path = os.path.join(temp_dir, file_upload.filename)
+                    
+                    with open(file_path, 'wb') as f:
+                        content = await file_upload.read()
+                        f.write(content)
+                    
+                    return await self._process_pdf(file_path)
+                else:
+                    temp_dir = tempfile.mkdtemp()
+                    file_path = os.path.join(temp_dir, file_upload.filename)
+                    
+                    with open(file_path, 'wb') as f:
+                        content = await file_upload.read()
+                        f.write(content)
+                    
+                    return [await self._process_image(file_path)]
+        except Exception as e:
+            if isinstance(file_upload, str):
+                logger.error(f"Error processing file {os.path.basename(file_upload)}: {str(e)}")
+            else:
+                logger.error(f"Error processing {file_upload.filename}: {str(e)}")
+            raise FileProcessingError(f"Unable to process file: {str(e)}")
+
     async def process_uploads(self, file_uploads: List[FileUpload]) -> List[Dict[str, any]]:
         tasks = [self.process_upload(file_upload) for file_upload in file_uploads]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -77,19 +125,7 @@ class FileHandler:
             else:
                 processed_results.extend(result)
         return processed_results
-
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def process_upload(self, file_upload: FileUpload) -> List[Dict[str, any]]:
-        try:
-            if file_upload.content_type == 'application/zip':
-                return await self._process_zip(file_upload.filename)
-            elif file_upload.content_type == 'application/pdf':
-                return await self._process_pdf(file_upload.filename)
-            else:  # Image files
-                return [await self._process_image(file_upload.filename)]
-        except Exception as e:
-            logger.error(f"Error processing {file_upload.filename}: {str(e)}")
-            raise FileProcessingError(f"Unable to process file {file_upload.filename}: {str(e)}")
+ 
 
     async def _process_zip(self, zip_path: str) -> List[Dict[str, any]]:
         loop = asyncio.get_event_loop()
