@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud OCR Engine</title>
     <style>
-        /* All CSS remains the same */
         :root {
             --primary-color: #4361ee;
             --primary-hover: #3a56d4;
@@ -361,9 +360,9 @@
         </main>
     </div>
     
-    <!-- Bridge script to connect UI with script.js -->
+    <!-- Add minimal UI interaction script -->
     <script>
-        // Handle file selection UI updates and sync with fileInput
+        // Handle file input display
         document.getElementById('file-input').addEventListener('change', function() {
             const fileList = document.getElementById('file-list');
             const uploadButton = document.getElementById('upload-button');
@@ -371,7 +370,6 @@
             fileList.innerHTML = '';
             uploadButton.disabled = this.files.length === 0;
             
-            // Display files in the UI
             for (let i = 0; i < this.files.length; i++) {
                 const file = this.files[i];
                 const fileItem = document.createElement('div');
@@ -413,19 +411,6 @@
                 const event = new Event('change');
                 fileInput.dispatchEvent(event);
             }
-        });
-        
-        // Prevent script.js from overriding the API docs button
-        document.addEventListener('DOMContentLoaded', function() {
-            // Store the original onclick handler
-            const apiDocsButton = document.getElementById('api-docs-button');
-            const originalOnClick = apiDocsButton.onclick;
-            
-            // After a short delay to let script.js initialize
-            setTimeout(function() {
-                // Restore the original onclick handler
-                apiDocsButton.onclick = originalOnClick;
-            }, 100);
         });
     </script>
     
