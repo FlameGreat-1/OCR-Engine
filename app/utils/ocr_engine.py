@@ -28,7 +28,7 @@ class OCREngine:
         self.process_executor = ProcessPoolExecutor(max_workers=settings.MAX_WORKERS)
 
     async def initialize(self):
-        self.redis = await aioredis.create_redis_pool(settings.REDIS_URL)
+        self.redis = await aioredis.from_url(settings.REDIS_URL)
 
     async def process_documents(self, documents: List[Dict[str, any]]) -> Dict[str, Dict]:
         results = {}
@@ -96,8 +96,8 @@ class OCREngine:
             
             if self.redis:
                 content_hash = hashlib.md5(document['content']).hexdigest()
-                cache_key = f"ocr:{content_hash}"
-                await self.redis.set(cache_key, str(extracted_data), expire=86400)  
+                cache_key = f"ocr:{content_hash}" 
+                await self.redis.set(cache_key, str(extracted_data), ex=86400)
 
             end_time = time.time()
             processing_time = end_time - start_time
@@ -280,9 +280,8 @@ class OCREngine:
         self.thread_executor.shutdown(wait=True)
         self.process_executor.shutdown(wait=True)
         if self.redis:
-            self.redis.close()
-            await self.redis.wait_closed()
-
+            await self.redis.close()
+        
 ocr_engine = OCREngine()
 
 # Initialization function to be called at application startup
