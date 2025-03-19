@@ -199,6 +199,16 @@ async def cancel_task(task_id: str, api_key: str = Depends(get_api_key)):
     else:
         return {"status": "Unable to cancel task, unknown state"}
 
+@app.get("/check-task/{task_id}")
+def check_task(task_id: str):
+    from celery.result import AsyncResult
+    result = AsyncResult(task_id)
+    return {
+        "task_id": task_id,
+        "status": result.status,
+        "info": result.info
+    }
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

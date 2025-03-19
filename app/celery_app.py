@@ -21,12 +21,10 @@ from functools import partial
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Celery with explicit result backend and broker
-celery_app = Celery(
-    'invoice_processing',
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND
-)
+# Initialize Celery with explicit result backend
+celery_app = Celery('invoice_processing')
+celery_app.conf.broker_url = settings.CELERY_BROKER_URL
+celery_app.conf.result_backend = settings.CELERY_RESULT_BACKEND
 
 file_handler = FileHandler()
 
@@ -49,7 +47,7 @@ def process_chunk(chunk, task_id, temp_dir):
     finally:
         loop.close()
 
-@celery_app.task(bind=True, name='process_file_task', soft_time_limit=420, time_limit=480)
+@celery_app.task(bind=True, soft_time_limit=420, time_limit=480)
 def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
     process = psutil.Process()
     logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")
@@ -65,24 +63,17 @@ def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
         logger.info(f"File processed: {file_path}")
         self.update_state(state='PROCESSING', meta={'progress': 20, 'message': 'File processed'})
 
-        # Process in the current task instead of creating subtasks for better reliability
-        all_extracted_data = []
-        total_files = len(processed_files)
+        chunk_size = 10  # Adjust based on your needs
+        chunks = [processed_files[i:i + chunk_size] for i in range(0, len(processed_files), chunk_size)]
         
-        for i, file_batch in enumerate(processed_files):
-            # Process directly instead of using group
-            ocr_results = asyncio.run(ocr_engine.process_documents([file_batch]))
-            batch_data = asyncio.run(asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()]))
-            all_extracted_data.extend(batch_data)
-            
-            # Update progress
-            progress = 20 + (i / total_files * 40)
-            self.update_state(state='PROCESSING', meta={'progress': progress, 'message': f'Processed {i+1}/{total_files} files'})
-            
+        partial_process_chunk = partial(process_chunk, task_id=task_id, temp_dir=temp_dir)
+        chunk_results = group(celery_app.task(partial_process_chunk).s(chunk) for chunk in chunks)()
+        extracted_data = [item for sublist in chunk_results.get() for item in sublist]
+
         logger.info("OCR and Data extraction completed")
         self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'OCR and Data extraction completed'})
 
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoice_batch(extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
         validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
         logger.info("Validation completed")
@@ -138,7 +129,7 @@ def process_file_task(self, task_id: str, file_path: str, temp_dir: str):
             logger.info(f"Temporary directory removed: {temp_dir}")
         logger.info(f"Memory usage at end of task: {process.memory_info().rss / 1024 / 1024} MB")
 
-@celery_app.task(bind=True, name='process_multiple_files_task', soft_time_limit=7200, time_limit=7260)
+@celery_app.task(bind=True, soft_time_limit=7200, time_limit=7260)
 def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_dir: str):
     process = psutil.Process()
     logger.info(f"Memory usage at start of task: {process.memory_info().rss / 1024 / 1024} MB")    
@@ -154,24 +145,17 @@ def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_
             logger.info(f"Processed file {idx + 1} of {len(file_paths)}: {file_path}")
             self.update_state(state='PROCESSING', meta={'progress': progress, 'message': f'Processed {idx + 1} of {len(file_paths)} files'})
 
-        # Process in the current task instead of creating subtasks
-        all_extracted_data = []
-        total_batches = len(processed_files)
+        chunk_size = 5  
+        chunks = [processed_files[i:i + chunk_size] for i in range(0, len(processed_files), chunk_size)]
         
-        for i, file_batch in enumerate(processed_files):
-            # Process directly instead of using group
-            ocr_results = asyncio.run(ocr_engine.process_documents([file_batch]))
-            batch_data = asyncio.run(asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()]))
-            all_extracted_data.extend(batch_data)
-            
-            # Update progress
-            progress = 20 + (i / total_batches * 40)
-            self.update_state(state='PROCESSING', meta={'progress': progress, 'message': f'Processed {i+1}/{total_batches} batches'})
+        partial_process_chunk = partial(process_chunk, task_id=task_id, temp_dir=temp_dir)
+        chunk_results = group(celery_app.task(partial_process_chunk).s(chunk) for chunk in chunks)()
+        extracted_data = [item for sublist in chunk_results.get() for item in sublist]
 
         logger.info("OCR and Data extraction completed")
         self.update_state(state='PROCESSING', meta={'progress': 60, 'message': 'OCR and Data extraction completed'})
 
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoice_batch(extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
         validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
         logger.info("Validation completed")
@@ -226,12 +210,6 @@ def process_multiple_files_task(self, task_id: str, file_paths: List[str], temp_
             shutil.rmtree(temp_dir)
             logger.info(f"Temporary directory removed: {temp_dir}")
         logger.info(f"Memory usage at end of task: {process.memory_info().rss / 1024 / 1024} MB")
-
-@celery_app.task(name='debug_task')
-def debug_task(task_id):
-    """Simple task to verify worker and result backend are working"""
-    logger.info(f"Debug task running for {task_id}")
-    return {'status': 'Completed', 'progress': 100, 'message': 'Debug task completed successfully'}
 
 @celery_app.task
 def test_task():
@@ -282,28 +260,12 @@ celery_app.conf.update(
     worker_concurrency=settings.CELERY_WORKER_CONCURRENCY,
     worker_max_tasks_per_child=settings.CELERY_WORKER_MAX_TASKS_PER_CHILD,
     worker_prefetch_multiplier=settings.CELERY_WORKER_PREFETCH_MULTIPLIER,
-    result_backend=settings.CELERY_RESULT_BACKEND,
-    broker_url=settings.CELERY_BROKER_URL,
     task_track_started=True,
-    task_ignore_result=False,  # Ensure results are stored
     task_time_limit=480,  # 8 minutes
     task_soft_time_limit=420,  # 7 minutes
     worker_max_memory_per_child=1000000,  # 1GB, adjust as needed
     beat_max_loop_interval=300,  # 5 minutes
-    task_acks_late=True,  # Only acknowledge tasks after they're completed
-    task_default_queue='celery',  # Default queue name
 )
-
-# Define task routes - ensure workers are started with these queues
-celery_app.conf.task_routes = {
-    'process_file_task': {'queue': 'celery'},  # Changed to use default queue
-    'process_multiple_files_task': {'queue': 'celery'},  # Changed to use default queue
-    'debug_task': {'queue': 'celery'},
-    'test_task': {'queue': 'celery'},
-}
 
 if __name__ == '__main__':
     celery_app.start()
-
-# When starting the worker, use:
-# celery -A app.celery_app worker -Q celery -l info
