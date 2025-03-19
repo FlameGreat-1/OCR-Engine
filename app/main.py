@@ -390,8 +390,15 @@ async def root(request: Request):
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Application is starting up")
-    await initialize_ocr_engine()  
+    try:
+        logger.info("Application is starting up")
+        try:
+            await initialize_ocr_engine()
+            logger.info("OCR engine initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize OCR engine: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error during application startup: {str(e)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
