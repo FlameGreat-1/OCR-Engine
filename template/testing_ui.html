@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud OCR Engine</title>
     <style>
-        /* Your existing CSS here */
         :root {
             --primary-color: #4361ee;
             --primary-hover: #3a56d4;
@@ -361,43 +360,27 @@
         </main>
     </div>
     
-    <!-- Add this script to handle file selection and UI updates -->
+    <!-- Add minimal UI interaction script -->
     <script>
-        // Handle file selection and UI updates
+        // Handle file input display
         document.getElementById('file-input').addEventListener('change', function() {
             const fileList = document.getElementById('file-list');
             const uploadButton = document.getElementById('upload-button');
             
-            // Store selected files in a global variable for access in remove handlers
-            window.selectedFiles = Array.from(this.files);
-            updateFileList();
+            fileList.innerHTML = '';
+            uploadButton.disabled = this.files.length === 0;
             
-            // Update file list UI
-            function updateFileList() {
-                fileList.innerHTML = '';
-                uploadButton.disabled = window.selectedFiles.length === 0;
+            for (let i = 0; i < this.files.length; i++) {
+                const file = this.files[i];
+                const fileItem = document.createElement('div');
+                fileItem.classList.add('file-item');
                 
-                window.selectedFiles.forEach((file, index) => {
-                    const fileItem = document.createElement('div');
-                    fileItem.classList.add('file-item');
-                    
-                    const fileName = document.createElement('div');
-                    fileName.classList.add('file-name');
-                    fileName.textContent = file.name;
-                    
-                    const removeButton = document.createElement('button');
-                    removeButton.classList.add('remove-file');
-                    removeButton.innerHTML = '×';
-                    removeButton.onclick = function(e) {
-                        e.preventDefault();
-                        window.selectedFiles.splice(index, 1);
-                        updateFileList();
-                    };
-                    
-                    fileItem.appendChild(fileName);
-                    fileItem.appendChild(removeButton);
-                    fileList.appendChild(fileItem);
-                });
+                const fileName = document.createElement('div');
+                fileName.classList.add('file-name');
+                fileName.textContent = file.name;
+                
+                fileItem.appendChild(fileName);
+                fileList.appendChild(fileItem);
             }
         });
         
