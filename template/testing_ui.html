@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud OCR Engine</title>
     <style>
+        /* Your existing CSS here */
         :root {
             --primary-color: #4361ee;
             --primary-hover: #3a56d4;
@@ -323,7 +324,7 @@
             <div class="card">
                 <h2>Upload Files</h2>
                 <form id="upload-form">
-                    <div id="upload-area" class="upload-area">
+                    <div id="upload-area" class="upload-area" onclick="document.getElementById('file-input').click();">
                         <div class="upload-icon">📄</div>
                         <p class="upload-text">Drag & Drop files here or click to browse</p>
                         <p class="file-types">Supported formats: PDF, JPG, JPEG, PNG</p>
@@ -340,7 +341,7 @@
             </div>
             
             <div class="card">
-                <h2>Progress</h2>
+                <h2>Processing Progress</h2>
                 <div id="progress-container" class="progress-container">
                     <div id="progress-bar" class="progress-bar"></div>
                 </div>
@@ -350,17 +351,87 @@
             <div id="error-display" class="error-display"></div>
             
             <div class="card">
-                <h2>Results</h2>
+                <h2>Processing Results</h2>
                 <div id="result-content"></div>
             </div>
             
             <div class="doc-button-container">
-                <button type="button" id="api-docs-button" class="btn btn-secondary">API Documentation</button>
+                <button type="button" id="api-docs-button" class="btn btn-secondary" onclick="window.location.href='https://ocr-engine-04dt.onrender.com/docs';">API Documentation</button>
             </div>
         </main>
     </div>
     
-    <!-- Link to the external script.js file -->
+    <!-- Add this script to handle file selection and UI updates -->
+    <script>
+        // Handle file selection and UI updates
+        document.getElementById('file-input').addEventListener('change', function() {
+            const fileList = document.getElementById('file-list');
+            const uploadButton = document.getElementById('upload-button');
+            
+            // Store selected files in a global variable for access in remove handlers
+            window.selectedFiles = Array.from(this.files);
+            updateFileList();
+            
+            // Update file list UI
+            function updateFileList() {
+                fileList.innerHTML = '';
+                uploadButton.disabled = window.selectedFiles.length === 0;
+                
+                window.selectedFiles.forEach((file, index) => {
+                    const fileItem = document.createElement('div');
+                    fileItem.classList.add('file-item');
+                    
+                    const fileName = document.createElement('div');
+                    fileName.classList.add('file-name');
+                    fileName.textContent = file.name;
+                    
+                    const removeButton = document.createElement('button');
+                    removeButton.classList.add('remove-file');
+                    removeButton.innerHTML = '×';
+                    removeButton.onclick = function(e) {
+                        e.preventDefault();
+                        window.selectedFiles.splice(index, 1);
+                        updateFileList();
+                    };
+                    
+                    fileItem.appendChild(fileName);
+                    fileItem.appendChild(removeButton);
+                    fileList.appendChild(fileItem);
+                });
+            }
+        });
+        
+        // Handle drag and drop
+        const uploadArea = document.getElementById('upload-area');
+        
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.style.borderColor = 'var(--primary-color)';
+            this.style.backgroundColor = '#eef2ff';
+        });
+        
+        uploadArea.addEventListener('dragleave', function() {
+            this.style.borderColor = 'var(--light-gray)';
+            this.style.backgroundColor = 'var(--secondary-color)';
+        });
+        
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.style.borderColor = 'var(--light-gray)';
+            this.style.backgroundColor = 'var(--secondary-color)';
+            
+            if (e.dataTransfer.files.length) {
+                const fileInput = document.getElementById('file-input');
+                fileInput.files = e.dataTransfer.files;
+                
+                // Trigger change event manually
+                const event = new Event('change');
+                fileInput.dispatchEvent(event);
+            }
+        });
+    </script>
+    
+    <!-- Link to your script.js for the backend functionality -->
     <script src="script.js"></script>
 </body>
 </html>
