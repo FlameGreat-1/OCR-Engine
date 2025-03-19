@@ -118,7 +118,7 @@ class OCREngine:
             "is_multipage": True,
             "num_pages": len(results)
         }
-
+ 
     async def _process_single_page(self, document: Dict[str, any]) -> Dict:
         image_bytes = document['content']
         image_name = document['filename']
@@ -130,11 +130,13 @@ class OCREngine:
                 self._analyze_layout(preprocessed_image)
             )
             ocr_result.update(layout_result)
+      
+            ocr_result['content'] = image_bytes
             return ocr_result
         except Exception as e:
             logger.error(f"Error in single page processing for {image_name}: {str(e)}")
             raise  # This will trigger the retry mechanism
-
+    
     async def _preprocess_image(self, image_bytes: bytes) -> bytes:
         return await asyncio.get_event_loop().run_in_executor(self.process_executor, self._preprocess_image_sync, image_bytes)
 
@@ -224,22 +226,26 @@ class OCREngine:
             key, value = text.split(':', 1)
             return {key.strip(): value.strip()}
         return None
-
+    
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_structured_data(self, ocr_result: Dict) -> Dict:
         try:
-            # Use Document AI to extract structured data
-            document = documentai.Document(content=ocr_result['content'], mime_type='application/pdf')
+            if 'content' not in ocr_result:
+                text_content = " ".join(ocr_result.get('words', []))
+                content = text_content.encode('utf-8')
+            else:
+                content = ocr_result['content']
+                
+            document = documentai.Document(content=content, mime_type='application/pdf')
             request = documentai.ProcessRequest(name=settings.DOCAI_PROCESSOR_NAME, document=document)
             response = await asyncio.to_thread(self.docai_client.process_document, request)
             
-            # Parse the structured data
             invoice = self._parse_docai_response(response.document)
             return invoice.dict()
         except Exception as e:
             logger.error(f"Error extracting structured data: {str(e)}")
             raise  # This will trigger the retry mechanism
-
+        
     def _parse_docai_response(self, document) -> Invoice:
         entities = {e.type_: e.mention_text for e in document.entities}
         
