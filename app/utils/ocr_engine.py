@@ -72,14 +72,17 @@ class OCREngine:
                     'content': content,
                     'is_multipage': False  
                 }
-           # cache_key = f"ocr:{hash(document['content'])}"
-            content_hash = hashlib.md5(document['content']).hexdigest()
-            cache_key = f"ocr:{content_hash}"
-            cached_result = await self.redis.get(cache_key)
             
-            if cached_result:
-                logger.info(f"Cache hit for document: {document['filename']}")
-                return eval(cached_result)
+            if self.redis:
+                content_hash = hashlib.md5(document['content']).hexdigest()
+                cache_key = f"ocr:{content_hash}"
+                cached_result = await self.redis.get(cache_key)
+                
+                if cached_result:
+                    logger.info(f"Cache hit for document: {document['filename']}")
+                    return eval(cached_result)
+            else:
+                logger.warning("Redis not initialized, skipping cache check")
 
             logger.info(f"Processing document: {document['filename']}")
             start_time = time.time()
@@ -90,7 +93,11 @@ class OCREngine:
                 ocr_result = await self._process_single_page(document)
 
             extracted_data = await self._extract_structured_data(ocr_result)
-            await self.redis.set(cache_key, str(extracted_data), expire=86400)  # Cache for 24 hours
+            
+            if self.redis:
+                content_hash = hashlib.md5(document['content']).hexdigest()
+                cache_key = f"ocr:{content_hash}"
+                await self.redis.set(cache_key, str(extracted_data), expire=86400)  
 
             end_time = time.time()
             processing_time = end_time - start_time

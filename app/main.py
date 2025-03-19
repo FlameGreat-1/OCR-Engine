@@ -391,10 +391,12 @@ async def root(request: Request):
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application is starting up")
+    await initialize_ocr_engine()  
 
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Application is shutting down")
+    await cleanup_ocr_engine()  
 
 if __name__ == "__main__":
     import uvicorn
