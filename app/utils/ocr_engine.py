@@ -12,6 +12,8 @@ from decimal import Decimal
 from datetime import datetime
 import aioredis
 from tenacity import retry, stop_after_attempt, wait_exponential
+import os
+import hashlib 
 import time
 
 logging.basicConfig(level=logging.INFO)
@@ -54,12 +56,27 @@ class OCREngine:
         logger.info(f"Average time per document: {processing_time/total_documents:.2f} seconds")
 
         return results
-
+    
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def _process_document(self, document: Dict[str, any]) -> Dict:
+    async def _process_document(self, document):
         try:
-            cache_key = f"ocr:{hash(document['content'])}"
+            if isinstance(document, str):
+                file_path = document
+                file_name = os.path.basename(file_path)
+                
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                
+                document = {
+                    'filename': file_name,
+                    'content': content,
+                    'is_multipage': False  
+                }
+           # cache_key = f"ocr:{hash(document['content'])}"
+            content_hash = hashlib.md5(document['content']).hexdigest()
+            cache_key = f"ocr:{content_hash}"
             cached_result = await self.redis.get(cache_key)
+            
             if cached_result:
                 logger.info(f"Cache hit for document: {document['filename']}")
                 return eval(cached_result)
@@ -81,9 +98,12 @@ class OCREngine:
 
             return extracted_data
         except Exception as e:
-            logger.error(f"Error processing {document['filename']}: {str(e)}")
-            raise  # This will trigger the retry mechanism
-
+            if isinstance(document, str):
+                logger.error(f"Error processing file {os.path.basename(document)}: {str(e)}")
+            else:
+                logger.error(f"Error processing {document['filename']}: {str(e)}")
+            raise  # This will trigger the retry mechanism.
+    
     async def _process_multipage(self, document: Dict[str, any]) -> Dict:
         results = await asyncio.gather(*[self._process_single_page({'content': page['content'], 'filename': f"{document['filename']}_page{i}"}) for i, page in enumerate(document['pages'], 1)])
         return {
