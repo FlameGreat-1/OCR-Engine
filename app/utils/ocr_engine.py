@@ -225,7 +225,7 @@ class OCREngine:
         if ':' in text:
             key, value = text.split(':', 1)
             return {key.strip(): value.strip()}
-        return None
+        return None    
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_structured_data(self, ocr_result: Dict) -> Dict:
@@ -236,16 +236,20 @@ class OCREngine:
             else:
                 content = ocr_result['content']
                 
-            document = documentai.Document(content=content, mime_type='application/pdf')
-            request = documentai.ProcessRequest(name=settings.DOCAI_PROCESSOR_NAME, document=document)
+            # Create the request using the correct API format
+            request = documentai.ProcessRequest()
+            request.name = settings.DOCAI_PROCESSOR_NAME
+            request.raw_document.content = content
+            request.raw_document.mime_type = 'application/pdf'
+            
             response = await asyncio.to_thread(self.docai_client.process_document, request)
             
             invoice = self._parse_docai_response(response.document)
             return invoice.dict()
         except Exception as e:
             logger.error(f"Error extracting structured data: {str(e)}")
-            raise  # This will trigger the retry mechanism
-        
+            raise  # This will trigger the retry mechanism         
+           
     def _parse_docai_response(self, document) -> Invoice:
         entities = {e.type_: e.mention_text for e in document.entities}
         
