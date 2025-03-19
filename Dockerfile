@@ -50,17 +50,21 @@ USER appuser
 EXPOSE 10000
 
 # Set memory limit for Gunicorn workers
-ENV GUNICORN_CMD_ARGS="--workers=2 --worker-class=uvicorn.workers.UvicornWorker --timeout=120 --max-requests=1000 --max-requests-jitter=50"
+ENV GUNICORN_CMD_ARGS="--workers=2 --worker-class=uvicorn.workers.UvicornWorker --timeout=300 --max-requests=1000 --max-requests-jitter=50"
 
 # Run the application with smaller footprint
-
 CMD gunicorn --bind 0.0.0.0:${PORT:-10000} app.main:app \
     --access-logfile /var/log/app/gunicorn.access.log \
-    --error-logfile /var/log/app/gunicorn.error.log & \
-    celery -A app.celery_app worker --loglevel=INFO -E --concurrency=1 \
-    -Q celery \
-    --max-memory-per-child=128000 \
-    --logfile=/var/log/app/celery_worker.log & \
-    celery -A app.celery_app beat --loglevel=INFO \
-    --logfile=/var/log/app/celery_beat.log & \
-    wait
+    --error-logfile /var/log/app/gunicorn.error.log
+
+# Celery workers and beat scheduler are commented out but kept for future use
+# CMD gunicorn --bind 0.0.0.0:${PORT:-10000} app.main:app \
+#     --access-logfile /var/log/app/gunicorn.access.log \
+#     --error-logfile /var/log/app/gunicorn.error.log & \
+#     celery -A app.celery_app worker --loglevel=INFO -E --concurrency=1 \
+#     -Q celery \
+#     --max-memory-per-child=128000 \
+#     --logfile=/var/log/app/celery_worker.log & \
+#     celery -A app.celery_app beat --loglevel=INFO \
+#     --logfile=/var/log/app/celery_beat.log & \
+#     wait
