@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     # File Upload Configuration
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
+    BATCH_SIZE: int = 5
     ALLOWED_EXTENSIONS: set = {"pdf", "jpg", "jpeg", "png", "zip"}
     TEMP_FILE_DIR: str = Field(default="/tmp", env="TEMP_FILE_DIR")
 
