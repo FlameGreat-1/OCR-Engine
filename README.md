@@ -19,7 +19,7 @@
 The Invoice Processing System is a robust, industrial-grade solution designed to extract key details from vendor bills. It processes 80-100 invoices (1-2 pages each) in a single upload, utilizing advanced OCR and NLP techniques to accurately extract and validate invoice data.
 
 ## Features
-- Supports PDF, JPG, PNG, and and ZIP file uploads (max 100MB)
+- Supports PDF, JPG, PNG, and ZIP file uploads (max 100MB)
 - Automatic multi-page invoice detection
 - Extracts key fields: Invoice Number, Vendor Name & Address, Invoice Date, Totals
 - Smart features:
@@ -335,3 +335,4 @@ OCR-Model-Project/
     ├── test_ocr_engine.py
     └── test_validator.py
 ```
+# Test change

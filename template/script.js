@@ -1,6 +1,6 @@
-// script.js
 
-const BASE_URL = "https://ocr-engine-04dt.onrender.com";
+
+const BASE_URL = "https://cloud-ocr-engine.onrender.com";
 let apiKey;
 
 async function getApiKey() {
