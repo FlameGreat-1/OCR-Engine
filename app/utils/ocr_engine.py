@@ -226,7 +226,7 @@ class OCREngine:
             key, value = text.split(':', 1)
             return {key.strip(): value.strip()}
         return None    
-    
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def _extract_structured_data(self, ocr_result: Dict) -> Dict:
         try:
@@ -236,18 +236,29 @@ class OCREngine:
             else:
                 content = ocr_result['content']
             
-            # Use the processor name from settings
+            # Extract the processor path correctly from the full URL
             processor_name = settings.DOCAI_PROCESSOR_NAME
+            if "https://" in processor_name:
+                # Extract just the path portion without the https:// prefix
+                processor_name = processor_name.split("/v1/")[1]
             
-            # Extract the processor path without the ":process" part
-            parent = processor_name.split(':')[0]
+            # Determine the correct MIME type based on the file extension
+            filename = ocr_result.get('filename', '')
+            mime_type = "application/pdf"  # Default
+            
+            if filename.lower().endswith(('.jpg', '.jpeg')):
+                mime_type = "image/jpeg"
+            elif filename.lower().endswith('.png'):
+                mime_type = "image/png"
+            elif filename.lower().endswith('.zip'):
+                mime_type = "application/zip"
             
             # Create the request with the correct format
             request = documentai.ProcessRequest(
-                name=parent,
+                name=processor_name,
                 raw_document=documentai.RawDocument(
                     content=content,
-                    mime_type="application/pdf"
+                    mime_type=mime_type
                 )
             )
             
@@ -262,7 +273,7 @@ class OCREngine:
             return invoice.dict()
         except Exception as e:
             logger.error(f"Error extracting structured data: {str(e)}")
-            raise  # This will trigger the retry mechanism
+            raise  # This will trigger the retry mechanism   
                       
     def _parse_docai_response(self, document) -> Invoice:
         entities = {e.type_: e.mention_text for e in document.entities}
