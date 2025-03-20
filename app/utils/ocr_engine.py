@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 class OCREngine:
     def __init__(self):
         self.gcv_client = vision.ImageAnnotatorClient()
-        self.docai_client = documentai.DocumentProcessorServiceClient()
+        self.docai_client = documentai.DocumentProcessorServiceClient(
+               client_options={"api_endpoint": "eu-documentai.googleapis.com"}
+         )
+
         self.redis = None
         self.thread_executor = ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
         self.process_executor = ProcessPoolExecutor(max_workers=settings.MAX_WORKERS)
