@@ -43,7 +43,8 @@ class OCREngine:
         
         async def process_batch(batch):
             batch_results = await asyncio.gather(*[self._process_document(doc) for doc in batch])
-            return {doc['filename']: result for doc, result in zip(batch, batch_results)}
+            return {doc if isinstance(doc, str) else doc['filename']: result for doc, result in zip(batch, batch_results)}
+
 
         optimal_batch_size = max(1, min(settings.BATCH_SIZE, total_documents // settings.MAX_WORKERS))
         batches = [documents[i:i+optimal_batch_size] for i in range(0, len(documents), optimal_batch_size)]
