@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Dict
+from typing import List, Dict, Tuple, Optional
 import io
 import logging
 from google.cloud import vision, documentai_v1 as documentai
@@ -7,15 +7,16 @@ import cv2
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from app.config import settings
-from app.models import ProcessingStatus, Invoice, Vendor, Address, InvoiceItem
+from app.models import ProcessingStatus, Invoice
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, date
 import aioredis
 from tenacity import retry, stop_after_attempt, wait_exponential
 import os
 import hashlib 
 import time
 import mimetypes
+from app.data_extractor import extract_invoice_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -101,7 +102,13 @@ class OCREngine:
                 ocr_result = await self._process_single_page(document)
 
             ocr_result['original_content'] = document['original_content']
-            extracted_data = await self._extract_structured_data(ocr_result)
+            ocr_result['filename'] = document.get('filename', '')
+            
+            # Get Document AI results
+            docai_result = await self._get_docai_results(ocr_result)
+            
+            # Use DataExtractor to extract final structured data
+            extracted_data = extract_invoice_data(ocr_result, docai_result)
             
             if self.redis:
                 content_hash = hashlib.md5(document['content']).hexdigest()
@@ -126,12 +133,13 @@ class OCREngine:
             "pages": results,
             "is_multipage": True,
             "num_pages": len(results),
-            "original_content": document['original_content']
+            "original_content": document['original_content'],
+            "filename": document.get('filename', '')
         }
  
     async def _process_single_page(self, document: Dict[str, any]) -> Dict:
         image_bytes = document['content']
-        image_name = document['filename']
+        image_name = document.get('filename', '')
         
         try:
             preprocessed_image = await self._preprocess_image(image_bytes)
@@ -173,6 +181,8 @@ class OCREngine:
 
             words = []
             boxes = []
+            text = document.text
+            
             for page in document.pages:
                 for block in page.blocks:
                     for paragraph in block.paragraphs:
@@ -185,6 +195,8 @@ class OCREngine:
             return {
                 "words": words,
                 "boxes": boxes,
+                "text": text,
+                "full_response": response,
                 "is_multipage": False,
                 "num_pages": 1
             }
@@ -240,7 +252,8 @@ class OCREngine:
         return None    
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-    async def _extract_structured_data(self, ocr_result: Dict) -> Dict:
+    async def _get_docai_results(self, ocr_result: Dict) -> Optional[Dict]:
+        """Get structured data from Document AI but don't parse it into Invoice object"""
         try:
             if 'original_content' in ocr_result:
                 content = ocr_result['original_content']
@@ -272,11 +285,33 @@ class OCREngine:
                 request=request
             )
             
-            invoice = self._parse_docai_response(response.document)
-            return invoice.dict()
+            # Extract entities into a dictionary
+            entities = {}
+            if hasattr(response, 'document') and hasattr(response.document, 'entities'):
+                entities = {e.type_: e.mention_text for e in response.document.entities}
+            
+            # Extract tables if available
+            tables = []
+            if (hasattr(response, 'document') and hasattr(response.document, 'pages') and 
+                len(response.document.pages) > 0 and hasattr(response.document.pages[0], 'tables')):
+                for table in response.document.pages[0].tables:
+                    if hasattr(table, 'body_rows'):
+                        table_data = []
+                        for row in table.body_rows:
+                            row_data = []
+                            for cell in row.cells:
+                                row_data.append(cell.layout.text_anchor.content)
+                            table_data.append(row_data)
+                        tables.append(table_data)
+            
+            return {
+                'entities': entities,
+                'tables': tables,
+                'document': response.document
+            }
         except Exception as e:
-            logger.error(f"Error extracting structured data: {str(e)}")
-            raise
+            logger.error(f"Error getting Document AI results: {str(e)}")
+            return None
     
     def _get_mime_type(self, filename: str, content: bytes) -> str:
         if filename.lower().endswith(('.jpg', '.jpeg')):
@@ -304,86 +339,6 @@ class OCREngine:
         
         # Default to PDF as a fallback
         return "application/pdf"
-                          
-    def _parse_docai_response(self, document) -> Invoice:
-        try:
-            entities = {e.type_: e.mention_text for e in document.entities}
-            
-            vendor = Vendor(
-                name=entities.get('supplier_name', ''),
-                address=Address(
-                    street=entities.get('supplier_address', ''),
-                    city=entities.get('supplier_city', ''),
-                    state=entities.get('supplier_state', ''),
-                    country=entities.get('supplier_country', ''),
-                    postal_code=entities.get('supplier_zip', '')
-                )
-            )
-
-            items = []
-            try:
-                if hasattr(document, 'pages') and len(document.pages) > 0 and hasattr(document.pages[0], 'tables'):
-                    for table in document.pages[0].tables:
-                        if hasattr(table, 'body_rows'):
-                            for row in table.body_rows:
-                                try:
-                                    if len(row.cells) >= 4:
-                                        item = InvoiceItem(
-                                            description=row.cells[0].layout.text_anchor.content,
-                                            quantity=int(row.cells[1].layout.text_anchor.content),
-                                            unit_price=Decimal(row.cells[2].layout.text_anchor.content),
-                                            total=Decimal(row.cells[3].layout.text_anchor.content)
-                                        )
-                                        items.append(item)
-                                except (ValueError, IndexError, AttributeError) as e:
-                                    logger.warning(f"Error parsing invoice item: {str(e)}")
-                                    continue
-            except Exception as e:
-                logger.warning(f"Error parsing invoice items: {str(e)}")
-
-            invoice_date = date.today()
-            try:
-                if 'invoice_date' in entities:
-                    invoice_date = datetime.strptime(entities.get('invoice_date', ''), '%Y-%m-%d').date()
-            except ValueError:
-                logger.warning(f"Could not parse invoice date: {entities.get('invoice_date', '')}")
-
-            try:
-                grand_total = Decimal(entities.get('total_amount', '0'))
-            except:
-                grand_total = Decimal('0')
-                
-            try:
-                taxes = Decimal(entities.get('total_tax_amount', '0'))
-            except:
-                taxes = Decimal('0')
-                
-            try:
-                final_total = Decimal(entities.get('total_amount', '0'))
-            except:
-                final_total = Decimal('0')
-
-            return Invoice(
-                filename=getattr(document, 'uri', '') or "unknown_document",
-                invoice_number=entities.get('invoice_id', ''),
-                vendor=vendor,
-                invoice_date=invoice_date,
-                grand_total=grand_total,
-                taxes=taxes,
-                final_total=final_total,
-                items=items,
-                pages=len(document.pages) if hasattr(document, 'pages') else 1
-            )
-        except Exception as e:
-            logger.error(f"Error parsing Document AI response: {str(e)}")
-            return Invoice(
-                filename="error_document",
-                vendor=Vendor(),
-                invoice_date=date.today(),
-                grand_total=Decimal('0'),
-                taxes=Decimal('0'),
-                final_total=Decimal('0')
-            )
 
     async def update_processing_status(self, total_documents: int, processed_documents: int) -> ProcessingStatus:
         progress = (processed_documents / total_documents) * 100

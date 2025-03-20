@@ -15,6 +15,7 @@ import shutil
 import secrets
 import logging
 from app.config import settings
+from datetime import date
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.ocr_engine import initialize_ocr_engine, cleanup_ocr_engine
@@ -102,7 +103,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
         
         for i, file_batch in enumerate(processed_files):
             ocr_results = await ocr_engine.process_documents([file_batch])
-            batch_data = await asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()])
+            batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
             progress = 20 + (i / total_files * 40)
@@ -114,7 +115,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
         
         validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
-        validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
+        validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
@@ -128,8 +129,9 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
             invoice_data['anomaly_flags'] = [flag for flagged in flagged_invoices if flagged['invoice_number'] == invoice.invoice_number for flag in flagged['flags']]
             export_data.append(invoice_data)
         
-        csv_output = export_invoices(export_data, 'csv')
-        excel_output = export_invoices(export_data, 'excel')
+        invoices = [Invoice.parse_obj(data) for data in export_data]
+        csv_output = await export_invoices(invoices, 'csv')
+        excel_output = await export_invoices(invoices, 'excel')
         
         csv_path = os.path.join(temp_dir, f"{task_id}_invoices.csv")
         excel_path = os.path.join(temp_dir, f"{task_id}_invoices.xlsx")
@@ -184,7 +186,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         
         for i, file_batch in enumerate(processed_files):
             ocr_results = await ocr_engine.process_documents([file_batch])
-            batch_data = await asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()])
+            batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
             progress = 20 + (i / total_batches * 40)
@@ -196,7 +198,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         
         validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
-        validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
+        validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
@@ -210,8 +212,9 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
             invoice_data['anomaly_flags'] = [flag for flagged in flagged_invoices if flagged['invoice_number'] == invoice.invoice_number for flag in flagged['flags']]
             export_data.append(invoice_data)
         
-        csv_output = export_invoices(export_data, 'csv')
-        excel_output = export_invoices(export_data, 'excel')
+        invoices = [Invoice.parse_obj(data) for data in export_data]
+        csv_output = await export_invoices(invoices, 'csv')
+        excel_output = await export_invoices(invoices, 'excel')
         
         csv_path = os.path.join(temp_dir, f"{task_id}_invoices.csv")
         excel_path = os.path.join(temp_dir, f"{task_id}_invoices.xlsx")
@@ -395,6 +398,7 @@ async def startup_event():
         logger.info("Application is starting up")
         try:
             await initialize_ocr_engine()
+            await data_extractor.initialize()
             logger.info("OCR engine initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize OCR engine: {str(e)}")
@@ -405,6 +409,7 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Application is shutting down")
     await cleanup_ocr_engine()  
+    await data_extractor.cleanup()  
     
 if __name__ == "__main__":
     import uvicorn
