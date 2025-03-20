@@ -16,7 +16,7 @@ import os
 import hashlib 
 import time
 import mimetypes
-from app.data_extractor import extract_invoice_data
+from app.utils.data_extractor import extract_invoice_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

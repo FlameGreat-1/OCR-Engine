@@ -19,10 +19,12 @@ from datetime import date
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.ocr_engine import initialize_ocr_engine, cleanup_ocr_engine
-from app.utils.data_extractor import extract_invoice_data
 from app.utils.validator import invoice_validator, flag_anomalies
 from app.utils.exporter import export_invoices
 from app.models import Invoice, ProcessingStatus
+from app.utils.data_extractor import data_extractor, extract_invoice_data
+from app.utils.data_extractor import initialize_data_extractor, cleanup_data_extractor
+
 
 # Initialize FastAPI app
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
@@ -398,10 +400,10 @@ async def startup_event():
         logger.info("Application is starting up")
         try:
             await initialize_ocr_engine()
-            await data_extractor.initialize()
-            logger.info("OCR engine initialized successfully")
+            await initialize_data_extractor()
+            logger.info("OCR engine and data extractor initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize OCR engine: {str(e)}")
+            logger.error(f"Failed to initialize components: {str(e)}")
     except Exception as e:
         logger.error(f"Error during application startup: {str(e)}")
 
@@ -409,7 +411,7 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Application is shutting down")
     await cleanup_ocr_engine()  
-    await data_extractor.cleanup()  
+    await cleanup_data_extractor()
     
 if __name__ == "__main__":
     import uvicorn
