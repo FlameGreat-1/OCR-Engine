@@ -235,21 +235,35 @@ class OCREngine:
                 content = text_content.encode('utf-8')
             else:
                 content = ocr_result['content']
-                
-            # Create the request using the correct API format
-            request = documentai.ProcessRequest()
-            request.name = settings.DOCAI_PROCESSOR_NAME
-            request.raw_document.content = content
-            request.raw_document.mime_type = 'application/pdf'
             
-            response = await asyncio.to_thread(self.docai_client.process_document, request)
+            # Use the processor name from settings
+            processor_name = settings.DOCAI_PROCESSOR_NAME
             
+            # Extract the processor path without the ":process" part
+            parent = processor_name.split(':')[0]
+            
+            # Create the request with the correct format
+            request = documentai.ProcessRequest(
+                name=parent,
+                raw_document=documentai.RawDocument(
+                    content=content,
+                    mime_type="application/pdf"
+                )
+            )
+            
+            # Process the document
+            response = await asyncio.to_thread(
+                self.docai_client.process_document,
+                request=request
+            )
+            
+            # Parse the response
             invoice = self._parse_docai_response(response.document)
             return invoice.dict()
         except Exception as e:
             logger.error(f"Error extracting structured data: {str(e)}")
-            raise  # This will trigger the retry mechanism         
-           
+            raise  # This will trigger the retry mechanism
+                      
     def _parse_docai_response(self, document) -> Invoice:
         entities = {e.type_: e.mention_text for e in document.entities}
         
