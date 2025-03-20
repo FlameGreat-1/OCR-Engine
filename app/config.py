@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     MULTI_PAGE_THRESHOLD: float = 0.95  # 95% confidence for multi-page detection
     INVOICE_NUMBER_ACCURACY: float = 0.95  # 95% accuracy for invoice number extraction
     TOTAL_MATH_ACCURACY: float = 1.0  # 100% accuracy for total calculations
-    MAX_WORKERS: int = Field(default=2, env="MAX_WORKERS")  # Reduced from 5 to 2
+    MAX_WORKERS: int = Field(default=2, env="MAX_WORKERS")  # can be increased to 5
 
     # Output Configuration
     OUTPUT_FORMATS: List[str] = Field(default=["csv", "excel"])
