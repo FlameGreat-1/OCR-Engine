@@ -19,7 +19,7 @@ from datetime import date
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.ocr_engine import initialize_ocr_engine, cleanup_ocr_engine
-from app.utils.data_extractor import data_extractor
+from app.utils.data_extractor import extract_invoice_data
 from app.utils.validator import invoice_validator, flag_anomalies
 from app.utils.exporter import export_invoices
 from app.models import Invoice, ProcessingStatus
