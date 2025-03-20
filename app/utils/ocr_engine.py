@@ -304,7 +304,7 @@ class OCREngine:
         
         # Default to PDF as a fallback
         return "application/pdf"
-                      
+                          
     def _parse_docai_response(self, document) -> Invoice:
         try:
             entities = {e.type_: e.mention_text for e in document.entities}
@@ -321,53 +321,68 @@ class OCREngine:
             )
 
             items = []
-            if hasattr(document, 'pages') and len(document.pages) > 0 and hasattr(document.pages[0], 'tables'):
-                for table in document.pages[0].tables:
-                    if hasattr(table, 'body_rows'):
-                        for row in table.body_rows:
-                            try:
-                                if len(row.cells) >= 4:
-                                    item = InvoiceItem(
-                                        description=row.cells[0].layout.text_anchor.content,
-                                        quantity=int(row.cells[1].layout.text_anchor.content),
-                                        unit_price=Decimal(row.cells[2].layout.text_anchor.content),
-                                        total=Decimal(row.cells[3].layout.text_anchor.content)
-                                    )
-                                    items.append(item)
-                            except (ValueError, IndexError, AttributeError) as e:
-                                logger.warning(f"Error parsing invoice item: {str(e)}")
-                                continue
+            try:
+                if hasattr(document, 'pages') and len(document.pages) > 0 and hasattr(document.pages[0], 'tables'):
+                    for table in document.pages[0].tables:
+                        if hasattr(table, 'body_rows'):
+                            for row in table.body_rows:
+                                try:
+                                    if len(row.cells) >= 4:
+                                        item = InvoiceItem(
+                                            description=row.cells[0].layout.text_anchor.content,
+                                            quantity=int(row.cells[1].layout.text_anchor.content),
+                                            unit_price=Decimal(row.cells[2].layout.text_anchor.content),
+                                            total=Decimal(row.cells[3].layout.text_anchor.content)
+                                        )
+                                        items.append(item)
+                                except (ValueError, IndexError, AttributeError) as e:
+                                    logger.warning(f"Error parsing invoice item: {str(e)}")
+                                    continue
+            except Exception as e:
+                logger.warning(f"Error parsing invoice items: {str(e)}")
 
-            invoice_date = datetime.now()
+            invoice_date = date.today()
             try:
                 if 'invoice_date' in entities:
-                    invoice_date = datetime.strptime(entities.get('invoice_date', ''), '%Y-%m-%d')
+                    invoice_date = datetime.strptime(entities.get('invoice_date', ''), '%Y-%m-%d').date()
             except ValueError:
                 logger.warning(f"Could not parse invoice date: {entities.get('invoice_date', '')}")
 
+            try:
+                grand_total = Decimal(entities.get('total_amount', '0'))
+            except:
+                grand_total = Decimal('0')
+                
+            try:
+                taxes = Decimal(entities.get('total_tax_amount', '0'))
+            except:
+                taxes = Decimal('0')
+                
+            try:
+                final_total = Decimal(entities.get('total_amount', '0'))
+            except:
+                final_total = Decimal('0')
+
             return Invoice(
-                filename=getattr(document, 'uri', ''),
+                filename=getattr(document, 'uri', '') or "unknown_document",
                 invoice_number=entities.get('invoice_id', ''),
                 vendor=vendor,
                 invoice_date=invoice_date,
-                grand_total=Decimal(entities.get('total_amount', '0')),
-                taxes=Decimal(entities.get('total_tax_amount', '0')),
-                final_total=Decimal(entities.get('total_amount', '0')),
+                grand_total=grand_total,
+                taxes=taxes,
+                final_total=final_total,
                 items=items,
-                pages=len(document.pages) if hasattr(document, 'pages') else 0
+                pages=len(document.pages) if hasattr(document, 'pages') else 1
             )
         except Exception as e:
             logger.error(f"Error parsing Document AI response: {str(e)}")
             return Invoice(
-                filename="",
-                invoice_number="",
-                vendor=Vendor(name="", address=Address(street="", city="", state="", country="", postal_code="")),
-                invoice_date=datetime.now(),
+                filename="error_document",
+                vendor=Vendor(),
+                invoice_date=date.today(),
                 grand_total=Decimal('0'),
                 taxes=Decimal('0'),
-                final_total=Decimal('0'),
-                items=[],
-                pages=0
+                final_total=Decimal('0')
             )
 
     async def update_processing_status(self, total_documents: int, processed_documents: int) -> ProcessingStatus:
