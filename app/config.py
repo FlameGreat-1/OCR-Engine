@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Google Cloud Vision Configuration
     GCV_CREDENTIALS: str = Field(..., env="GOOGLE_APPLICATION_CREDENTIALS")
     DOCAI_PROCESSOR_NAME: str = Field(..., env="DOCAI_PROCESSOR_NAME")
+    DOCAI_ENDPOINT: str = Field(default="documentai.googleapis.com", env="GOOGLE_CLOUD_DOCUMENTAI_ENDPOINT")
 
     # invoice2data Configuration
     INVOICE2DATA_TEMPLATES_DIR: str = Field(default="/app/invoice_templates", env="INVOICE2DATA_TEMPLATES_DIR")
