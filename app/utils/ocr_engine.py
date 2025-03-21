@@ -127,7 +127,7 @@ class OCREngine:
                 content_hash = hashlib.md5(document['content']).hexdigest()
                 cache_key = f"ocr:{content_hash}" 
                 if isinstance(extracted_data, Invoice):
-                    await self.redis.set(cache_key, json.dumps(extracted_data, cls=DecimalEncoder), ex=86400)
+                    await self.redis.set(cache_key, extracted_data.json(), ex=86400)
                 else:
                     await self.redis.set(cache_key, json.dumps(extracted_data), ex=86400)
 
