@@ -23,7 +23,7 @@ class DataExtractor:
 
     async def initialize(self):
         self.redis = await aioredis.from_url(settings.REDIS_URL)
-
+    
     async def extract_data(self, ocr_results: List[Dict]) -> List[Invoice]:
         try:
             start_time = time.time()
@@ -35,7 +35,7 @@ class DataExtractor:
             logger.error(f"Error extracting data: {str(e)}")
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
     
-    async def _extract_date_aggressive(self, text: str) -> Optional[date]:
+    async def _extract_date(self, text: str) -> Optional[date]:
         logger.info(f"Searching for date in text: {text[:200]}...")
         
         # Direct regex patterns for common date formats
@@ -130,8 +130,26 @@ class DataExtractor:
                 except Exception:
                     pass
         
+        # Special handling for DD-MM-YYYY format that might not be caught by dateparser
+        try:
+            date_pattern = r'\b(\d{1,2})-(\d{1,2})-(\d{4})\b'
+            matches = re.findall(date_pattern, text)
+            
+            for match in matches:
+                if len(match) == 3:
+                    day, month, year = match
+                    try:
+                        return date(int(year), int(month), int(day))
+                    except ValueError:
+                        try:
+                            return date(int(year), int(day), int(month))
+                        except ValueError:
+                            continue
+        except Exception as e:
+            logger.warning(f"Failed to parse specific date format: {e}")
+        
         # If we get here, we couldn't find a date
-        logger.warning("No date found with aggressive extraction")
+        logger.warning("No date found in extraction")
         return None
 
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
