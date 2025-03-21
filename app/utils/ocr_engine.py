@@ -118,7 +118,10 @@ class OCREngine:
             if self.redis:
                 content_hash = hashlib.md5(document['content']).hexdigest()
                 cache_key = f"ocr:{content_hash}" 
-                await self.redis.set(cache_key, json.dumps(extracted_data), ex=86400)
+                if isinstance(extracted_data, Invoice):
+                    await self.redis.set(cache_key, json.dumps(extracted_data.dict()), ex=86400)
+                else:
+                    await self.redis.set(cache_key, json.dumps(extracted_data), ex=86400)
 
             end_time = time.time()
             processing_time = end_time - start_time
@@ -130,7 +133,7 @@ class OCREngine:
                 logger.error(f"Error processing file {os.path.basename(document)}: {str(e)}")
             else:
                 logger.error(f"Error processing {document['filename']}: {str(e)}")
-            raise
+            raise    
     
     async def _process_multipage(self, document: Dict[str, any]) -> Dict:
         results = await asyncio.gather(*[self._process_single_page({'content': page['content'], 'filename': f"{document['filename']}_page{i}", 'original_content': page['content']}) for i, page in enumerate(document['pages'], 1)])
