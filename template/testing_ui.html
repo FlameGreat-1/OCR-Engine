@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cloud OCR Engine</title>
     <style>
+        /* CSS styles remain unchanged */
         :root {
             --primary-color: #4361ee;
             --primary-hover: #3a56d4;
@@ -355,10 +356,15 @@
             </div>
             
             <div class="doc-button-container">
-                <button type="button" id="api-docs-button" class="btn btn-secondary" onclick="window.location.href='https://ocr-engine-04dt.onrender.com/docs';">API Documentation</button>
+                <button type="button" id="api-docs-button" class="btn btn-secondary" onclick="window.location.href='/docs';">API Documentation</button>
             </div>
         </main>
     </div>
+    
+    <!-- Inject API key from server -->
+    <script>
+        const API_KEY = "{{ api_key }}";
+    </script>
     
     <!-- Add minimal UI interaction script -->
     <script>
@@ -415,6 +421,6 @@
     </script>
     
     <!-- Link to your script.js for the backend functionality -->
-    <script src="script.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

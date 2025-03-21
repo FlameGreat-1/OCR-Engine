@@ -1,22 +1,6 @@
-
-
 const BASE_URL = "https://cloud-ocr-engine.onrender.com";
-let apiKey;
-
-async function getApiKey() {
-    try {
-        const response = await fetch(`${BASE_URL}/api-key`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.api_key;
-        } else {
-            throw new Error('Failed to get API key');
-        }
-    } catch (error) {
-        console.error('Error fetching API key:', error);
-        return null;
-    }
-}
+let apiKey = API_KEY;
+let currentTaskId = null;
 
 document.addEventListener('DOMContentLoaded', async () => {
     const uploadForm = document.getElementById('upload-form');
@@ -29,8 +13,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const errorDisplay = document.getElementById('error-display');
     const apiKeyStatus = document.getElementById('api-key-status');
 
-    // Fetch API key when the page loads
-    apiKey = await getApiKey();
+    // Check API key
     if (!apiKey) {
         apiKeyStatus.style.display = 'block';
         apiKeyStatus.textContent = 'Warning: API key not detected. Some features may be limited.';
@@ -38,7 +21,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         apiKeyStatus.style.display = 'none';
     }
 
-    let currentTaskId = null;
+    // Define showError function
+    function showError(message) {
+        errorDisplay.style.display = 'block';
+        errorDisplay.textContent = message;
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Error';
+    }
 
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -47,6 +36,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (files.length === 0) {
             showError('Please select at least one file to upload.');
             return;
+        }
+
+        // Check file types
+        for (let file of files) {
+            const fileType = file.type;
+            if (!['application/pdf', 'image/jpeg', 'image/png', 'application/zip'].includes(fileType)) {
+                showError(`Unsupported file type: ${fileType}. Please upload PDF, JPEG, PNG, or ZIP files only.`);
+                return;
+            }
         }
 
         uploadButton.disabled = true;
@@ -61,6 +59,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             formData.append('files', file);
         }
 
+        const maxWaitTime = 300000; // 5 minutes in milliseconds
+        const startTime = Date.now();
+
         try {
             // Start upload
             const uploadResponse = await fetch(`${BASE_URL}/upload/`, {
@@ -72,47 +73,84 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
 
             if (!uploadResponse.ok) {
-                throw new Error(`HTTP error! status: ${uploadResponse.status}`);
+                const errorText = await uploadResponse.text();
+                throw new Error(`Server error (${uploadResponse.status}): ${errorText}`);
             }
 
             const uploadResult = await uploadResponse.json();
             currentTaskId = uploadResult.task_id;
+            
+            resultContent.innerHTML = `<p>Upload successful. Task ID: ${currentTaskId}</p>`;
 
             // Poll for status
             let processingComplete = false;
             while (!processingComplete) {
+                // Check for timeout
+                if (Date.now() - startTime > maxWaitTime) {
+                    throw new Error('Processing timed out after 5 minutes');
+                }
+
                 const statusResponse = await fetch(`${BASE_URL}/status/${currentTaskId}`, {
                     headers: {
                         'X-API-Key': apiKey
                     }
                 });
+
+                if (!statusResponse.ok) {
+                    const errorText = await statusResponse.text();
+                    throw new Error(`Server error (${statusResponse.status}): ${errorText}`);
+                }
+
                 const statusResult = await statusResponse.json();
+                const status = statusResult.status;
 
-                progressBar.style.width = `${statusResult.status.progress}%`;
-                progressText.textContent = `${statusResult.status.progress}%`;
+                // Update progress bar and text
+                progressBar.style.width = `${status.progress}%`;
+                progressText.textContent = `${status.progress}% - ${status.message}`;
 
-                if (statusResult.status.status === 'Completed') {
+                if (status.status === 'Completed') {
                     processingComplete = true;
-                } else if (statusResult.status.status === 'Failed') {
-                    throw new Error('Processing failed');
+                } else if (status.status === 'Failed') {
+                    throw new Error(`Processing failed: ${status.message}`);
                 } else {
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2 seconds
                 }
             }
 
             // Fetch results
-            await downloadResults('csv');
-            await downloadResults('excel');
+            resultContent.innerHTML += '<p>Processing complete. Downloading results...</p>';
+            
+            try {
+                await downloadResults('csv');
+                resultContent.innerHTML += '<p>CSV results downloaded.</p>';
+            } catch (error) {
+                resultContent.innerHTML += `<p>Error downloading CSV: ${error.message}</p>`;
+            }
+            
+            try {
+                await downloadResults('excel');
+                resultContent.innerHTML += '<p>Excel results downloaded.</p>';
+            } catch (error) {
+                resultContent.innerHTML += `<p>Error downloading Excel: ${error.message}</p>`;
+            }
 
             // Fetch and display validation results
-            const validationResults = await fetchValidationResults();
-            displayValidationResults(validationResults);
+            try {
+                const validationResults = await fetchValidationResults();
+                displayValidationResults(validationResults);
+            } catch (error) {
+                resultContent.innerHTML += `<p>Error fetching validation results: ${error.message}</p>`;
+            }
 
             // Fetch and display anomalies
-            const anomalies = await fetchAnomalies();
-            displayAnomalies(anomalies);
+            try {
+                const anomalies = await fetchAnomalies();
+                displayAnomalies(anomalies);
+            } catch (error) {
+                resultContent.innerHTML += `<p>Error fetching anomalies: ${error.message}</p>`;
+            }
 
-            resultContent.innerHTML += '<p>Processing complete. Results downloaded automatically.</p>';
+            resultContent.innerHTML += '<p>All processing complete.</p>';
 
         } catch (error) {
             console.error('Error:', error);
@@ -133,8 +171,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         'X-API-Key': apiKey
                     }
                 });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server error (${response.status}): ${errorText}`);
+                }
+                
                 const result = await response.json();
                 resultContent.innerHTML = `<p>${result.status}</p>`;
+                progressBar.style.width = '0%';
+                progressText.textContent = 'Cancelled';
                 uploadButton.disabled = false;
                 cancelButton.disabled = true;
                 currentTaskId = null;
@@ -152,19 +198,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-        if (resultsResponse.ok) {
-            const blob = await resultsResponse.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `ocr_results.${format}`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-        } else {
-            throw new Error(`Failed to download ${format} results`);
+        if (!resultsResponse.ok) {
+            const errorText = await resultsResponse.text();
+            throw new Error(`Failed to download ${format} results: ${errorText}`);
         }
+
+        const blob = await resultsResponse.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = format === 'excel' ? 'ocr_results.xlsx' : 'ocr_results.csv';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     }
 
     async function fetchValidationResults() {
@@ -173,6 +221,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 'X-API-Key': apiKey
             }
         });
+        
+        if (!validationResponse.ok) {
+            const errorText = await validationResponse.text();
+            throw new Error(`Failed to fetch validation results: ${errorText}`);
+        }
+        
         return await validationResponse.json();
     }
 
@@ -182,29 +236,60 @@ document.addEventListener('DOMContentLoaded', async () => {
                 'X-API-Key': apiKey
             }
         });
+        
+        if (!anomaliesResponse.ok) {
+            const errorText = await anomaliesResponse.text();
+            throw new Error(`Failed to fetch anomalies: ${errorText}`);
+        }
+        
         return await anomaliesResponse.json();
     }
 
     function displayValidationResults(results) {
-        let validationHtml = '<h3>Validation Results:</h3><ul>';
-        for (const [key, value] of Object.entries(results)) {
-            validationHtml += `<li>${key}: ${value}</li>`;
+        let validationHtml = '<h3>Validation Results:</h3>';
+        
+        if (Object.keys(results).length === 0) {
+            validationHtml += '<p>No validation issues found.</p>';
+        } else {
+            validationHtml += '<ul>';
+            for (const [invoiceNumber, warnings] of Object.entries(results)) {
+                if (warnings && warnings.length > 0) {
+                    validationHtml += `<li>Invoice ${invoiceNumber}:<ul>`;
+                    for (const warning of warnings) {
+                        validationHtml += `<li>${warning}</li>`;
+                    }
+                    validationHtml += '</ul></li>';
+                }
+            }
+            validationHtml += '</ul>';
         }
-        validationHtml += '</ul>';
+        
         resultContent.innerHTML += validationHtml;
     }
 
     function displayAnomalies(anomalies) {
-        let anomaliesHtml = '<h3>Detected Anomalies:</h3><ul>';
-        for (const anomaly of anomalies) {
-            anomaliesHtml += `<li>${anomaly}</li>`;
+        let anomaliesHtml = '<h3>Detected Anomalies:</h3>';
+        
+        if (!anomalies || anomalies.length === 0) {
+            anomaliesHtml += '<p>No anomalies detected.</p>';
+        } else {
+            anomaliesHtml += '<ul>';
+            for (const anomaly of anomalies) {
+                anomaliesHtml += `<li>Invoice ${anomaly.invoice_number}: `;
+                if (anomaly.flags && anomaly.flags.length > 0) {
+                    anomaliesHtml += `<ul>`;
+                    for (const flag of anomaly.flags) {
+                        anomaliesHtml += `<li>${flag}</li>`;
+                    }
+                    anomaliesHtml += `</ul>`;
+                } else {
+                    anomaliesHtml += 'No specific flags';
+                }
+                anomaliesHtml += `</li>`;
+            }
+            anomaliesHtml += '</ul>';
         }
-        anomaliesHtml += '</ul>';
+        
         resultContent.innerHTML += anomaliesHtml;
-    }
-
-    function showError(message) {
-        errorDisplay.style.display = 'block';
-        errorDisplay.textContent = message;
     }
 });
