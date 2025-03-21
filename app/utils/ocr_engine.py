@@ -91,7 +91,10 @@ class OCREngine:
                 
                 if cached_result:
                     logger.info(f"Cache hit for document: {document['filename']}")
-                    return json.loads(cached_result)
+                    try:
+                        return json.loads(cached_result)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Invalid JSON in cache for {document['filename']}, processing again")
             else:
                 logger.warning("Redis not initialized, skipping cache check")
 
