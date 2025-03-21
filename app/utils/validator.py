@@ -31,6 +31,13 @@ class InvoiceValidator:
         is_valid = len(all_warnings) == 0
 
         return is_valid, all_warnings, warnings
+    
+    def validate_invoices(self, invoices: List[Invoice]) -> List[Tuple[Invoice, List[str], Dict[str, List[str]]]]:
+        results = []
+        for invoice in invoices:
+            is_valid, warnings, categorized_warnings = self.validate_invoice(invoice)
+            results.append((invoice, warnings, categorized_warnings))
+        return results
 
     def _validate_filename(self, filename: str) -> List[str]:
         warnings = []
