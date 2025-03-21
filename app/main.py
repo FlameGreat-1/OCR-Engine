@@ -115,7 +115,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
         logger.info("OCR and Data extraction completed")
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoices(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
         validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
@@ -198,7 +198,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         logger.info("OCR and Data extraction completed")
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoices(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
         validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
