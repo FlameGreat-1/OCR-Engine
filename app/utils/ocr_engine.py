@@ -13,6 +13,7 @@ from datetime import datetime, date
 import aioredis
 from tenacity import retry, stop_after_attempt, wait_exponential
 import os
+import json
 import hashlib 
 import time
 import mimetypes
@@ -90,7 +91,7 @@ class OCREngine:
                 
                 if cached_result:
                     logger.info(f"Cache hit for document: {document['filename']}")
-                    return eval(cached_result)
+                    return json.loads(cached_result)
             else:
                 logger.warning("Redis not initialized, skipping cache check")
 
@@ -114,7 +115,7 @@ class OCREngine:
             if self.redis:
                 content_hash = hashlib.md5(document['content']).hexdigest()
                 cache_key = f"ocr:{content_hash}" 
-                await self.redis.set(cache_key, str(extracted_data), ex=86400)
+                await self.redis.set(cache_key, json.dumps(extracted_data), ex=86400)
 
             end_time = time.time()
             processing_time = end_time - start_time
