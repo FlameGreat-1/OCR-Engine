@@ -64,7 +64,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const startTime = Date.now();
 
         try {
-            // Start upload
+        
+            console.log("About to send request");
+            console.log("Files:", fileInput.files);
+            console.log("FormData created", Array.from(formData.entries()));
+            
             const uploadResponse = await fetch(`${BASE_URL}/upload/`, {
                 method: 'POST',
                 body: formData,
