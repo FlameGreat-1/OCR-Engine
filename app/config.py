@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Invoice Processing System"
     X_API_KEY: str = Field(..., env="X_API_KEY")
+    REQUIRE_API_KEY: bool = os.getenv("REQUIRE_API_KEY", "True").lower() in ("true", "1", "t")
+
 
     # File Upload Configuration
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB

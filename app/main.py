@@ -60,8 +60,12 @@ class ProcessingResponse(BaseModel):
 processing_tasks = {}
 direct_results = {}
 
-# Helper functions
 def get_api_key(api_key: str = Depends(api_key_header)):
+    # Skip validation if REQUIRE_API_KEY is False
+    if not settings.REQUIRE_API_KEY:
+        return None  
+        
+    # Normal validation when REQUIRE_API_KEY is True
     if api_key != settings.X_API_KEY:  
         raise HTTPException(status_code=403, detail="Could not validate API key")
     return api_key

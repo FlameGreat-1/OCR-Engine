@@ -1,5 +1,5 @@
 
-const BASE_URL = window.location.origin;
+const BASE_URL = "";
 let apiKey = API_KEY;
 let currentTaskId = null;
 
