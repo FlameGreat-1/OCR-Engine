@@ -410,10 +410,9 @@ app.mount("/static", StaticFiles(directory="template"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    # Inject the API key directly into the template
     return templates.TemplateResponse("testing_ui.html", {
         "request": request,
-        "api_key": settings.X_API_KEY
+        "api_key": settings.X_API_KEY  
     })
 
 @app.on_event("startup")

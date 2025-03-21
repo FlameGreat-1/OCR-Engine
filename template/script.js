@@ -1,4 +1,5 @@
-const BASE_URL = "https://cloud-ocr-engine.onrender.com";
+
+const BASE_URL = "";
 let apiKey = API_KEY;
 let currentTaskId = null;
 
