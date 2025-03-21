@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends, Request, status
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
+from fastapi.security import APIKeyHeader, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.templating import Jinja2Templates
@@ -32,11 +32,13 @@ app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 # Add middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://cloud-ocr-engine.onrender.com"],
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["X-API-Key", "Content-Type"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
+
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 # Set up logging
@@ -46,7 +48,6 @@ logger = logging.getLogger(__name__)
 # Initialize utilities
 file_handler = FileHandler()
 api_key_header = APIKeyHeader(name="X-API-Key")
-security = HTTPBasic()
 
 # Define models
 class ProcessingRequest(BaseModel):
@@ -69,17 +70,6 @@ def get_api_key(api_key: str = Depends(api_key_header)):
     if api_key != settings.X_API_KEY:  
         raise HTTPException(status_code=403, detail="Could not validate API key")
     return api_key
-
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")
-    correct_password = secrets.compare_digest(credentials.password, "password")
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 def get_file_type(filename):
     ext = os.path.splitext(filename)[1].lower()
@@ -402,10 +392,6 @@ def check_task(task_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-@app.get("/api-key")
-def read_api_key(username: str = Depends(get_current_username)):
-    return {"api_key": settings.X_API_KEY}
     
 # Set up templates and static files
 templates = Jinja2Templates(directory="template")

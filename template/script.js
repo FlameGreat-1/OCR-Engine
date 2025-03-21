@@ -69,21 +69,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log("Files:", fileInput.files);
             console.log("FormData created", Array.from(formData.entries()));
             
-            // Use relative URL for upload
-            const uploadResponse = await fetch('/upload/', {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-API-Key': apiKey
-                }
+            // Use XMLHttpRequest for upload instead of fetch
+            const uploadResult = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                
+                xhr.open('POST', '/upload/', true);
+                xhr.setRequestHeader('X-API-Key', apiKey);
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const result = JSON.parse(xhr.responseText);
+                            resolve(result);
+                        } catch (e) {
+                            reject(new Error(`Invalid JSON response: ${xhr.responseText}`));
+                        }
+                    } else {
+                        reject(new Error(`Server error (${xhr.status}): ${xhr.responseText}`));
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    console.error("XHR Error:", xhr.statusText);
+                    reject(new Error("Network error occurred"));
+                };
+                
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = `${percentComplete}%`;
+                        progressText.textContent = `${percentComplete}% - Uploading...`;
+                    }
+                };
+                
+                xhr.send(formData);
             });
 
-            if (!uploadResponse.ok) {
-                const errorText = await uploadResponse.text();
-                throw new Error(`Server error (${uploadResponse.status}): ${errorText}`);
-            }
-
-            const uploadResult = await uploadResponse.json();
             currentTaskId = uploadResult.task_id;
             
             resultContent.innerHTML = `<p>Upload successful. Task ID: ${currentTaskId}</p>`;
@@ -96,19 +117,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error('Processing timed out after 5 minutes');
                 }
 
-                // Use relative URL for status
-                const statusResponse = await fetch(`/status/${currentTaskId}`, {
-                    headers: {
-                        'X-API-Key': apiKey
-                    }
+                // Use XMLHttpRequest for status
+                const statusResult = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', `/status/${currentTaskId}`, true);
+                    xhr.setRequestHeader('X-API-Key', apiKey);
+                    
+                    xhr.onload = function() {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                const result = JSON.parse(xhr.responseText);
+                                resolve(result);
+                            } catch (e) {
+                                reject(new Error(`Invalid JSON response: ${xhr.responseText}`));
+                            }
+                        } else {
+                            reject(new Error(`Server error (${xhr.status}): ${xhr.responseText}`));
+                        }
+                    };
+                    
+                    xhr.onerror = function() {
+                        reject(new Error("Network error occurred"));
+                    };
+                    
+                    xhr.send();
                 });
 
-                if (!statusResponse.ok) {
-                    const errorText = await statusResponse.text();
-                    throw new Error(`Server error (${statusResponse.status}): ${errorText}`);
-                }
-
-                const statusResult = await statusResponse.json();
                 const status = statusResult.status;
 
                 // Update progress bar and text
@@ -172,20 +206,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     cancelButton.addEventListener('click', async () => {
         if (currentTaskId) {
             try {
-                // Use relative URL for cancel
-                const response = await fetch(`/cancel/${currentTaskId}`, {
-                    method: 'POST',
-                    headers: {
-                        'X-API-Key': apiKey
-                    }
+                // Use XMLHttpRequest for cancel
+                const result = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', `/cancel/${currentTaskId}`, true);
+                    xhr.setRequestHeader('X-API-Key', apiKey);
+                    
+                    xhr.onload = function() {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                const result = JSON.parse(xhr.responseText);
+                                resolve(result);
+                            } catch (e) {
+                                reject(new Error(`Invalid JSON response: ${xhr.responseText}`));
+                            }
+                        } else {
+                            reject(new Error(`Server error (${xhr.status}): ${xhr.responseText}`));
+                        }
+                    };
+                    
+                    xhr.onerror = function() {
+                        reject(new Error("Network error occurred"));
+                    };
+                    
+                    xhr.send();
                 });
                 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`Server error (${response.status}): ${errorText}`);
-                }
-                
-                const result = await response.json();
                 resultContent.innerHTML = `<p>${result.status}</p>`;
                 progressBar.style.width = '0%';
                 progressText.textContent = 'Cancelled';
@@ -200,60 +246,105 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     async function downloadResults(format) {
-        // Use relative URL for download
-        const resultsResponse = await fetch(`/download/${currentTaskId}?format=${format}`, {
-            headers: {
-                'X-API-Key': apiKey
-            }
-        });
+        try {
+            // Use XMLHttpRequest for download
+            const blob = await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', `/download/${currentTaskId}?format=${format}`, true);
+                xhr.setRequestHeader('X-API-Key', apiKey);
+                xhr.responseType = 'blob';
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(xhr.response);
+                    } else {
+                        // Try to read error message from blob
+                        const reader = new FileReader();
+                        reader.onload = function() {
+                            reject(new Error(`Failed to download ${format} results: ${reader.result}`));
+                        };
+                        reader.onerror = function() {
+                            reject(new Error(`Failed to download ${format} results: Status ${xhr.status}`));
+                        };
+                        reader.readAsText(xhr.response);
+                    }
+                };
+                
+                xhr.onerror = function() {
+                    reject(new Error(`Network error while downloading ${format}`));
+                };
+                
+                xhr.send();
+            });
 
-        if (!resultsResponse.ok) {
-            const errorText = await resultsResponse.text();
-            throw new Error(`Failed to download ${format} results: ${errorText}`);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = format === 'excel' ? 'ocr_results.xlsx' : 'ocr_results.csv';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            throw error;
         }
-
-        const blob = await resultsResponse.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = format === 'excel' ? 'ocr_results.xlsx' : 'ocr_results.csv';
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
     }
 
     async function fetchValidationResults() {
-        // Use relative URL for validation results
-        const validationResponse = await fetch(`/validation/${currentTaskId}`, {
-            headers: {
-                'X-API-Key': apiKey
-            }
+        // Use XMLHttpRequest for validation results
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `/validation/${currentTaskId}`, true);
+            xhr.setRequestHeader('X-API-Key', apiKey);
+            
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const result = JSON.parse(xhr.responseText);
+                        resolve(result);
+                    } catch (e) {
+                        reject(new Error(`Invalid JSON response: ${xhr.responseText}`));
+                    }
+                } else {
+                    reject(new Error(`Failed to fetch validation results: ${xhr.responseText}`));
+                }
+            };
+            
+            xhr.onerror = function() {
+                reject(new Error("Network error occurred"));
+            };
+            
+            xhr.send();
         });
-        
-        if (!validationResponse.ok) {
-            const errorText = await validationResponse.text();
-            throw new Error(`Failed to fetch validation results: ${errorText}`);
-        }
-        
-        return await validationResponse.json();
     }
 
     async function fetchAnomalies() {
-        // Use relative URL for anomalies
-        const anomaliesResponse = await fetch(`/anomalies/${currentTaskId}`, {
-            headers: {
-                'X-API-Key': apiKey
-            }
+        // Use XMLHttpRequest for anomalies
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', `/anomalies/${currentTaskId}`, true);
+            xhr.setRequestHeader('X-API-Key', apiKey);
+            
+            xhr.onload = function() {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const result = JSON.parse(xhr.responseText);
+                        resolve(result);
+                    } catch (e) {
+                        reject(new Error(`Invalid JSON response: ${xhr.responseText}`));
+                    }
+                } else {
+                    reject(new Error(`Failed to fetch anomalies: ${xhr.responseText}`));
+                }
+            };
+            
+            xhr.onerror = function() {
+                reject(new Error("Network error occurred"));
+            };
+            
+            xhr.send();
         });
-        
-        if (!anomaliesResponse.ok) {
-            const errorText = await anomaliesResponse.text();
-            throw new Error(`Failed to fetch anomalies: ${errorText}`);
-        }
-        
-        return await anomaliesResponse.json();
     }
 
     function displayValidationResults(results) {
@@ -303,4 +394,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         resultContent.innerHTML += anomaliesHtml;
     }
+    
+    // Add a simple health check to test connectivity
+    fetch('/health')
+        .then(response => response.json())
+        .then(data => console.log('Health check successful:', data))
+        .catch(error => console.error('Health check failed:', error));
 });
