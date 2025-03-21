@@ -60,16 +60,11 @@ class DataExtractor:
                             date_str, 
                             settings={
                                 'DATE_ORDER': order,
-                                'PREFER_DAY_OF_MONTH': 'current',
-                                'PREFER_DATES_FROM': 'past',
                                 'RELATIVE_BASE': datetime.now()
                             }
                         )
                         if parsed_date:
-                            if parsed_date.date() <= datetime.now().date():
-                                return parsed_date.date()
-                            elif (parsed_date.date() - datetime.now().date()).days <= 30:
-                                return parsed_date.date()
+                            return parsed_date.date()
                 except Exception as e:
                     logger.warning(f"Could not parse invoice date: {match.group(1)} - {str(e)}")
         
@@ -80,12 +75,10 @@ class DataExtractor:
                     dateparser.parse,
                     date_str,
                     settings={
-                        'PREFER_DAY_OF_MONTH': 'current',
-                        'PREFER_DATES_FROM': 'past',
                         'RELATIVE_BASE': datetime.now()
                     }
                 )
-                if parsed_date and parsed_date.date() <= datetime.now().date():
+                if parsed_date:
                     return parsed_date.date()
         except Exception as e:
             logger.warning(f"Failed to extract dates with secondary method: {str(e)}")
