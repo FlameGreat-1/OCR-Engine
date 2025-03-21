@@ -22,6 +22,14 @@ from app.utils.data_extractor import extract_invoice_data
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, date) or isinstance(obj, datetime):
+            return obj.isoformat()
+        return super(DecimalEncoder, self).default(obj)
+
 class OCREngine:
     def __init__(self):
         self.gcv_client = vision.ImageAnnotatorClient()
@@ -113,13 +121,13 @@ class OCREngine:
             docai_result = await self._get_docai_results(ocr_result)
             
             # Use DataExtractor to extract final structured data
-            extracted_data = extract_invoice_data(ocr_result, docai_result)
+            extracted_data = await extract_invoice_data(ocr_result, docai_result)
             
             if self.redis:
                 content_hash = hashlib.md5(document['content']).hexdigest()
                 cache_key = f"ocr:{content_hash}" 
                 if isinstance(extracted_data, Invoice):
-                    await self.redis.set(cache_key, json.dumps(extracted_data.dict()), ex=86400)
+                    await self.redis.set(cache_key, json.dumps(extracted_data, cls=DecimalEncoder), ex=86400)
                 else:
                     await self.redis.set(cache_key, json.dumps(extracted_data), ex=86400)
 

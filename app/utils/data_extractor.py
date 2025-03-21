@@ -35,6 +35,63 @@ class DataExtractor:
             logger.error(f"Error extracting data: {str(e)}")
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
 
+    async def _extract_date(self, text: str) -> Optional[date]:
+        patterns = [
+            r'(?i)date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            r'(?i)invoice\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            r'(?i)date\s*of\s*invoice[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            r'(?i)issue\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            r'(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
+            r'(?i)date[:\s]*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})',
+            r'(?i)invoice\s*date[:\s]*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})',
+            r'([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})'
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, text)
+            for match in matches:
+                try:
+                    date_str = match.group(1).strip()
+                    
+                    date_orders = ['DMY', 'MDY', 'YMD']
+                    for order in date_orders:
+                        parsed_date = await asyncio.to_thread(
+                            dateparser.parse,
+                            date_str, 
+                            settings={
+                                'DATE_ORDER': order,
+                                'PREFER_DAY_OF_MONTH': 'current',
+                                'PREFER_DATES_FROM': 'past',
+                                'RELATIVE_BASE': datetime.now()
+                            }
+                        )
+                        if parsed_date:
+                            if parsed_date.date() <= datetime.now().date():
+                                return parsed_date.date()
+                            elif (parsed_date.date() - datetime.now().date()).days <= 30:
+                                return parsed_date.date()
+                except Exception as e:
+                    logger.warning(f"Could not parse invoice date: {match.group(1)} - {str(e)}")
+        
+        try:
+            potential_dates = re.findall(r'\b\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}\b|\b[A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4}\b', text)
+            for date_str in potential_dates:
+                parsed_date = await asyncio.to_thread(
+                    dateparser.parse,
+                    date_str,
+                    settings={
+                        'PREFER_DAY_OF_MONTH': 'current',
+                        'PREFER_DATES_FROM': 'past',
+                        'RELATIVE_BASE': datetime.now()
+                    }
+                )
+                if parsed_date and parsed_date.date() <= datetime.now().date():
+                    return parsed_date.date()
+        except Exception as e:
+            logger.warning(f"Failed to extract dates with secondary method: {str(e)}")
+        
+        return None
+
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
         try:
             cache_key = f"extracted:{hash(str(ocr_result))}"
@@ -45,18 +102,18 @@ class DataExtractor:
                     return Invoice.parse_raw(cached_result)
 
             start_time = time.time()
-            invoice = self.extract_invoice_data(ocr_result)
+            invoice = await self.extract_invoice_data(ocr_result)
             end_time = time.time()
             logger.info(f"Extracted data for {ocr_result.get('filename', '')} in {end_time - start_time:.2f} seconds")
 
             if self.redis:
-                await self.redis.set(cache_key, invoice.json(), expire=86400)  # Cache for 24 hours
+                await self.redis.set(cache_key, invoice.json(), expire=86400)
             return invoice
         except Exception as e:
             logger.error(f"Error extracting data for {ocr_result.get('filename', '')}: {str(e)}")
             return Invoice(filename=ocr_result.get("filename", ""))
 
-    def extract_invoice_data(self, ocr_result: Dict, docai_result: Optional[Dict] = None) -> Invoice:
+    async def extract_invoice_data(self, ocr_result: Dict, docai_result: Optional[Dict] = None) -> Invoice:
         filename = ocr_result.get('filename', '')
         
         if docai_result and 'entities' in docai_result:
@@ -65,7 +122,7 @@ class DataExtractor:
             if self._is_invoice_valid(invoice):
                 return invoice
         
-        return self._extract_from_gcv(ocr_result, filename)
+        return await self._extract_from_gcv(ocr_result, filename)
     
     def _is_invoice_valid(self, invoice: Invoice) -> bool:
         return (invoice.invoice_number or 
@@ -143,8 +200,8 @@ class DataExtractor:
             items=items,
             pages=1  
         )
-
-    def _extract_from_gcv(self, ocr_result: Dict, filename: str) -> Invoice:
+    
+    async def _extract_from_gcv(self, ocr_result: Dict, filename: str) -> Invoice:
         text = ocr_result.get('text', '')
         if not text and 'words' in ocr_result:
             text = ' '.join(ocr_result.get('words', []))
@@ -153,7 +210,7 @@ class DataExtractor:
         
         vendor = self._extract_vendor(text)
         
-        invoice_date = self._extract_date(text)
+        invoice_date = await self._extract_date(text) 
         
         grand_total, taxes, final_total = self._extract_totals(text)
         
@@ -222,24 +279,7 @@ class DataExtractor:
             state=state,
             country=country,
             postal_code=postal_code
-        )
-
-    def _extract_date(self, text: str) -> Optional[date]:
-        patterns = [
-            r'(?i)date[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
-            r'(?i)invoice\s*date[:\s]*(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})',
-            r'(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})'
-        ]
-        for pattern in patterns:
-            match = re.search(pattern, text)
-            if match:
-                try:
-                    parsed_date = dateparser.parse(match.group(1))
-                    if parsed_date:
-                        return parsed_date.date()
-                except:
-                    pass
-        return None
+        )  
 
     def _extract_totals(self, text: str) -> Tuple[Optional[Decimal], Optional[Decimal], Optional[Decimal]]:
         grand_total = None
@@ -312,5 +352,5 @@ async def initialize_data_extractor():
 async def cleanup_data_extractor():
     await data_extractor.cleanup()
 
-def extract_invoice_data(ocr_result: Dict, docai_result: Optional[Dict] = None) -> Invoice:
-    return data_extractor.extract_invoice_data(ocr_result, docai_result)
+async def extract_invoice_data(ocr_result: Dict, docai_result: Optional[Dict] = None) -> Invoice:
+    return await data_extractor.extract_invoice_data(ocr_result, docai_result)
