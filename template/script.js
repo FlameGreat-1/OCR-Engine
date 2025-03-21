@@ -1,5 +1,5 @@
-
-const BASE_URL = "https://cloud-ocr-engine.onrender.com";
+// Set empty BASE_URL for relative paths
+const BASE_URL = "";
 let apiKey = API_KEY;
 let currentTaskId = null;
 
@@ -64,12 +64,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const startTime = Date.now();
 
         try {
-        
+            // Debug logs
             console.log("About to send request");
             console.log("Files:", fileInput.files);
             console.log("FormData created", Array.from(formData.entries()));
             
-            const uploadResponse = await fetch(`${BASE_URL}/upload/`, {
+            // Use relative URL for upload
+            const uploadResponse = await fetch('/upload/', {
                 method: 'POST',
                 body: formData,
                 headers: {
@@ -95,7 +96,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     throw new Error('Processing timed out after 5 minutes');
                 }
 
-                const statusResponse = await fetch(`${BASE_URL}/status/${currentTaskId}`, {
+                // Use relative URL for status
+                const statusResponse = await fetch(`/status/${currentTaskId}`, {
                     headers: {
                         'X-API-Key': apiKey
                     }
@@ -170,7 +172,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     cancelButton.addEventListener('click', async () => {
         if (currentTaskId) {
             try {
-                const response = await fetch(`${BASE_URL}/cancel/${currentTaskId}`, {
+                // Use relative URL for cancel
+                const response = await fetch(`/cancel/${currentTaskId}`, {
                     method: 'POST',
                     headers: {
                         'X-API-Key': apiKey
@@ -197,7 +200,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     async function downloadResults(format) {
-        const resultsResponse = await fetch(`${BASE_URL}/download/${currentTaskId}?format=${format}`, {
+        // Use relative URL for download
+        const resultsResponse = await fetch(`/download/${currentTaskId}?format=${format}`, {
             headers: {
                 'X-API-Key': apiKey
             }
@@ -221,7 +225,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function fetchValidationResults() {
-        const validationResponse = await fetch(`${BASE_URL}/validation/${currentTaskId}`, {
+        // Use relative URL for validation results
+        const validationResponse = await fetch(`/validation/${currentTaskId}`, {
             headers: {
                 'X-API-Key': apiKey
             }
@@ -236,7 +241,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function fetchAnomalies() {
-        const anomaliesResponse = await fetch(`${BASE_URL}/anomalies/${currentTaskId}`, {
+        // Use relative URL for anomalies
+        const anomaliesResponse = await fetch(`/anomalies/${currentTaskId}`, {
             headers: {
                 'X-API-Key': apiKey
             }
