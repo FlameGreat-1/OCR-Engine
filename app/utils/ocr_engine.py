@@ -199,6 +199,8 @@ class OCREngine:
             boxes = []
             text = document.text
             
+            logger.info(f"Google Cloud Vision extracted text: {text[:500]}...") 
+            
             for page in document.pages:
                 for block in page.blocks:
                     for paragraph in block.paragraphs:
@@ -300,6 +302,8 @@ class OCREngine:
                 self.docai_client.process_document,
                 request=request
             )
+            if hasattr(response, 'document') and hasattr(response.document, 'entities'):
+                 logger.info(f"Document AI extracted entities: {[f'{e.type_}: {e.mention_text}' for e in response.document.entities]}")
             
             # Extract entities into a dictionary
             entities = {}

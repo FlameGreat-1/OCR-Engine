@@ -35,123 +35,104 @@ class DataExtractor:
             logger.error(f"Error extracting data: {str(e)}")
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
     
-    async def _extract_date(self, text: str) -> Optional[date]:
-        labeled_patterns = [
-            r'(?i)date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
-            r'(?i)invoice\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
-            r'(?i)date\s*of\s*invoice[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
-            r'(?i)issue\s*date[:\s]*(\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})',
-            r'(?i)date[:\s]*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})',
-            r'(?i)invoice\s*date[:\s]*([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})',
-        ]
+    async def _extract_date_aggressive(self, text: str) -> Optional[date]:
+        logger.info(f"Searching for date in text: {text[:200]}...")
         
+        # Direct regex patterns for common date formats
         date_patterns = [
-            r'(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2,4})',
-            r'([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{4})',
-            r'(\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{4})',
-            r'(\d{4}[/\.-]\d{1,2}[/\.-]\d{1,2})',
-            r'(\d{1,2}[/\.-][A-Za-z]{3}[/\.-]\d{4})',
-            r'([A-Za-z]{3}[/\.-]\d{1,2}[/\.-]\d{4})',
+            # DD/MM/YYYY or MM/DD/YYYY or YYYY/MM/DD with various separators
+            r'\b(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{4})\b',
+            r'\b(\d{4}[/\.-]\d{1,2}[/\.-]\d{1,2})\b',
+            # DD/MM/YY or MM/DD/YY with various separators
+            r'\b(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2})\b',
+            # Month names with day and year
+            r'\b([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4})\b',
+            r'\b(\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{2,4})\b',
+            # Numeric formats without separators
+            r'\b(\d{8})\b',  # YYYYMMDD or DDMMYYYY
+            r'\b(\d{6})\b',  # YYMMDD or DDMMYY
         ]
         
-        for pattern in labeled_patterns:
-            matches = re.finditer(pattern, text)
-            for match in matches:
-                try:
-                    date_str = match.group(1).strip()
-                    logger.info(f"Found labeled date pattern: {date_str}")
-                    
-                    date_orders = ['DMY', 'MDY', 'YMD']
-                    for order in date_orders:
-                        parsed_date = await asyncio.to_thread(
-                            dateparser.parse,
-                            date_str, 
-                            settings={
-                                'DATE_ORDER': order,
-                                'RELATIVE_BASE': datetime.now()
-                            }
-                        )
-                        if parsed_date:
-                            logger.info(f"Successfully parsed date: {parsed_date.date()} using order {order}")
-                            return parsed_date.date()
-                except Exception as e:
-                    logger.warning(f"Could not parse labeled date: {match.group(1)} - {str(e)}")
-        
-        for pattern in date_patterns:
-            matches = re.finditer(pattern, text)
-            for match in matches:
-                try:
-                    date_str = match.group(1).strip()
-                    logger.info(f"Found date pattern: {date_str}")
-                    
-                    date_orders = ['DMY', 'MDY', 'YMD']
-                    for order in date_orders:
-                        parsed_date = await asyncio.to_thread(
-                            dateparser.parse,
-                            date_str, 
-                            settings={
-                                'DATE_ORDER': order,
-                                'RELATIVE_BASE': datetime.now()
-                            }
-                        )
-                        if parsed_date:
-                            logger.info(f"Successfully parsed date: {parsed_date.date()} using order {order}")
-                            return parsed_date.date()
-                except Exception as e:
-                    logger.warning(f"Could not parse date: {match.group(1)} - {str(e)}")
-        
-        try:
-            words = text.split()
-            for i in range(len(words)):
-                word = words[i].strip('.,;:()[]{}')
+        # First, look for dates near keywords
+        date_keywords = ['date', 'invoice date', 'issue date', 'dated', 'invoice', 'issued']
+        for keyword in date_keywords:
+            # Look for keyword and then extract nearby text
+            keyword_pattern = rf'(?i){re.escape(keyword)}[:\s]*(.{{0,30}})'
+            keyword_matches = re.finditer(keyword_pattern, text)
+            for match in keyword_matches:
+                nearby_text = match.group(1)
+                logger.info(f"Found text near '{keyword}': {nearby_text}")
                 
-                if re.search(r'\d', word) and (re.search(r'[-/\.]', word) or len(word) == 8):
-                    try:
-                        parsed_date = await asyncio.to_thread(
-                            dateparser.parse,
-                            word,
-                            settings={'RELATIVE_BASE': datetime.now()}
-                        )
-                        if parsed_date:
-                            logger.info(f"Found date from word scan: {word} -> {parsed_date.date()}")
-                            return parsed_date.date()
+                # Look for date patterns in the nearby text
+                for pattern in date_patterns:
+                    date_matches = re.finditer(pattern, nearby_text, re.IGNORECASE)
+                    for date_match in date_matches:
+                        date_str = date_match.group(0)
+                        logger.info(f"Found potential date near '{keyword}': {date_str}")
                         
-                        if len(word) == 8 and word.isdigit():
-                            try:
-                                year = int(word[:4])
-                                month = int(word[4:6])
-                                day = int(word[6:8])
-                                if 1 <= month <= 12 and 1 <= day <= 31 and 1900 <= year <= 2100:
-                                    parsed_date = date(year, month, day)
-                                    logger.info(f"Found numeric date: {word} -> {parsed_date}")
-                                    return parsed_date
-                            except ValueError:
-                                pass
-                    except:
-                        pass
-                        
-                if re.match(r'[A-Za-z]{3,9}', word) and i < len(words) - 1:
-                    next_word = words[i+1].strip('.,;:()[]{}')
-                    if re.match(r'\d{1,2}', next_word) and i < len(words) - 2:
-                        year_word = words[i+2].strip('.,;:()[]{}')
-                        if re.match(r'\d{4}', year_word):
-                            date_str = f"{word} {next_word} {year_word}"
+                        # Try all possible date orders with dateparser
+                        date_orders = ['DMY', 'MDY', 'YMD']
+                        for order in date_orders:
                             try:
                                 parsed_date = await asyncio.to_thread(
                                     dateparser.parse,
                                     date_str,
-                                    settings={'RELATIVE_BASE': datetime.now()}
+                                    settings={
+                                        'DATE_ORDER': order,
+                                        'RELATIVE_BASE': datetime.now()
+                                    }
                                 )
                                 if parsed_date:
-                                    logger.info(f"Found date from word combination: {date_str} -> {parsed_date.date()}")
+                                    logger.info(f"Successfully parsed date: {parsed_date.date()} using order {order}")
                                     return parsed_date.date()
-                            except:
-                                pass
-        except Exception as e:
-            logger.warning(f"Error in word-by-word date scanning: {str(e)}")
+                            except Exception as e:
+                                logger.warning(f"Failed to parse date {date_str} with order {order}: {e}")
         
-        logger.warning("No date found in text")
-        return None    
+        # If no date found near keywords, scan the entire text
+        for pattern in date_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                date_str = match.group(0)
+                logger.info(f"Found potential date: {date_str}")
+                
+                # Try all possible date orders with dateparser
+                date_orders = ['DMY', 'MDY', 'YMD']
+                for order in date_orders:
+                    try:
+                        parsed_date = await asyncio.to_thread(
+                            dateparser.parse,
+                            date_str,
+                            settings={
+                                'DATE_ORDER': order,
+                                'RELATIVE_BASE': datetime.now()
+                            }
+                        )
+                        if parsed_date:
+                            logger.info(f"Successfully parsed date: {parsed_date.date()} using order {order}")
+                            return parsed_date.date()
+                    except Exception as e:
+                        logger.warning(f"Failed to parse date {date_str} with order {order}: {e}")
+        
+        # Last resort: look for any sequence of numbers that might be a date
+        number_sequences = re.findall(r'\b\d+\b', text)
+        for seq in number_sequences:
+            if len(seq) in [6, 8]:  # Potential date formats
+                try:
+                    # Let dateparser handle the interpretation
+                    parsed_date = await asyncio.to_thread(
+                        dateparser.parse,
+                        seq,
+                        settings={'RELATIVE_BASE': datetime.now()}
+                    )
+                    if parsed_date:
+                        logger.info(f"Found numeric date: {seq} -> {parsed_date.date()}")
+                        return parsed_date.date()
+                except Exception:
+                    pass
+        
+        # If we get here, we couldn't find a date
+        logger.warning("No date found with aggressive extraction")
+        return None
 
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
         try:
