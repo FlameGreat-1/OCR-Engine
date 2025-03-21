@@ -147,12 +147,13 @@ def validate_invoice_batch(invoices: List[Dict]) -> List[Tuple[Dict, bool, List[
         results.append((invoice_data, is_valid, warnings, categorized_warnings))
     return results
 
+
 def flag_anomalies(invoices: List[Invoice]) -> List[Dict]:
     flagged_invoices = []
     for invoice in invoices:
         flags = []
         
-        if invoice.invoice_date > date.today():
+        if invoice.invoice_date is not None and invoice.invoice_date > date.today():
             flags.append("Future date")
 
         if invoice.final_total > Decimal('10000.00'):
@@ -165,3 +166,5 @@ def flag_anomalies(invoices: List[Invoice]) -> List[Dict]:
             flagged_invoices.append({**invoice.dict(), 'flags': flags})
 
     return flagged_invoices
+
+
