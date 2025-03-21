@@ -147,20 +147,21 @@ def validate_invoice_batch(invoices: List[Dict]) -> List[Tuple[Dict, bool, List[
         results.append((invoice_data, is_valid, warnings, categorized_warnings))
     return results
 
+
 def flag_anomalies(invoices: List[Invoice]) -> List[Dict]:
     flagged_invoices = []
     for invoice in invoices:
         flags = []
         
-        # Check for future date
+        # Check for future date with null check
         if invoice.invoice_date is not None and invoice.invoice_date > date.today():
             flags.append("Future date")
 
-        # Check for high total amount
+        # Check for high total amount with null check
         if invoice.final_total is not None and invoice.final_total > Decimal('10000.00'):
             flags.append("Unusually high total amount")
 
-        # Check for large number of line items
+        # Check for large number of line items with null check
         if invoice.items is not None and len(invoice.items) > 20:
             flags.append("Large number of line items")
 

@@ -89,15 +89,17 @@ def get_file_type(filename):
         return "application/zip"
     return None
     
-# Processing functions
 async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
     logger.info(f"Starting direct processing for task {task_id}")
     
     try:
+        # Set initial status
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Starting processing")
         
+        # Process file
         processed_files = await file_handler.process_upload(file_path)
         logger.info(f"File processed: {file_path}")
+        # Update progress to 20%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=20, message="File processed")
         
         all_extracted_data = []
@@ -108,11 +110,13 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
             batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
-            progress = 20 + (i / total_files * 40)
+            # Calculate progress between 20% and 60%
+            progress = 20 + ((i + 1) / total_files * 40)
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {i+1}/{total_files} files')
         
         logger.info("OCR and Data extraction completed")
+        # Update progress to 60%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
         validation_results = invoice_validator.validate_invoices(all_extracted_data)
@@ -120,7 +124,11 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
         validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
+        # Update progress to 80%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
+        
+        # Update progress to 90%
+        processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=90, message="Generating reports")
         
         flagged_invoices = flag_anomalies(validated_data)
         
@@ -158,6 +166,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
             'anomalies': flagged_invoices
         }
         
+        # Final update - completed
         processing_tasks[task_id] = ProcessingStatus(status="Completed", progress=100, message="Processing completed")
         direct_results[task_id] = result
         
@@ -173,12 +182,14 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
     logger.info(f"Starting direct processing for multiple files, task {task_id}")
     
     try:
+        # Set initial status
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Starting processing")
         
         processed_files = []
         for idx, file_path in enumerate(file_paths):
             processed_files.extend(await file_handler.process_upload(file_path))
-            progress = (idx + 1) / len(file_paths) * 20
+            # Calculate progress up to 20%
+            progress = ((idx + 1) / len(file_paths) * 20)
             logger.info(f"Processed file {idx + 1} of {len(file_paths)}: {file_path}")
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {idx + 1} of {len(file_paths)} files')
@@ -191,11 +202,13 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
             batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
-            progress = 20 + (i / total_batches * 40)
+            # Calculate progress between 20% and 60%
+            progress = 20 + ((i + 1) / total_batches * 40)
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {i+1}/{total_batches} batches')
         
         logger.info("OCR and Data extraction completed")
+        # Update progress to 60%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
         validation_results = invoice_validator.validate_invoices(all_extracted_data)
@@ -203,7 +216,11 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
+        # Update progress to 80%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
+        
+        # Update progress to 90%
+        processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=90, message="Generating reports")
         
         flagged_invoices = flag_anomalies(validated_data)
         
@@ -241,6 +258,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
             'anomalies': flagged_invoices
         }
         
+        # Final update - completed
         processing_tasks[task_id] = ProcessingStatus(status="Completed", progress=100, message="Processing completed")
         direct_results[task_id] = result
         
