@@ -35,7 +35,7 @@ class DataExtractor:
             logger.error(f"Error extracting data: {str(e)}")
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
     
-    async def extract_date(self, text: str, entities: Optional[List[str]] = None) -> Optional[date]:
+    async def _extract_date(self, text: str, entities: Optional[List[str]] = None) -> Optional[date]:
         if entities:
             entity_date = await self._extract_date_from_entities(entities)
             if entity_date:
@@ -229,7 +229,7 @@ class DataExtractor:
                                 return date(year, int(day), int(month))
                             except ValueError:
                                 pass
-        return None
+        return None 
     
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
         try:
