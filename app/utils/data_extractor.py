@@ -36,10 +36,6 @@ class DataExtractor:
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
     
     async def _extract_date(self, text: str) -> Optional[date]:
-        import re
-        from datetime import datetime, date
-        import dateparser
-        import asyncio
         
         date_patterns = [
             r'\b(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2,4})\b',
@@ -180,6 +176,24 @@ class DataExtractor:
                     return date(int(year), month_num, int(day))
                 except ValueError:
                     pass
+        
+        dot_date_pattern = r'\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b'
+        dot_matches = re.findall(dot_date_pattern, text)
+        for match in dot_matches:
+            if len(match) == 3:
+                day, month, year_short = match
+                current_year = datetime.now().year
+                century = current_year // 100
+                year = int(f"{century}{year_short}")
+                if year > current_year + 20:
+                    year = int(f"{century-1}{year_short}")
+                try:
+                    return date(year, int(month), int(day))
+                except ValueError:
+                    try:
+                        return date(year, int(day), int(month))
+                    except ValueError:
+                        pass
         
         try:
             parsed_date = await asyncio.to_thread(
