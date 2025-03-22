@@ -442,11 +442,33 @@ class DataExtractor:
             except:
                 logger.warning(f"Could not parse decimal: {amount_string}")
                 return None
-
+    
+    async def clear_extraction_cache(self):
+        """Clear all extraction-related cache entries from Redis."""
+        try:
+            redis = await aioredis.from_url(settings.REDIS_URL)
+            # Get all keys matching the extraction pattern
+            extraction_keys = await redis.keys("extracted:*")
+            if extraction_keys:
+                # Delete all matching keys
+                await redis.delete(*extraction_keys)
+                logger.info(f"Cleared {len(extraction_keys)} cached extraction results")
+            else:
+                logger.info("No cached extraction results found")
+            await redis.close()
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing cache: {str(e)}")
+            return False
+            
     async def cleanup(self):
         self.executor.shutdown(wait=True)
         if self.redis:
             await self.redis.close()
+               
+async def clear_extraction_cache():
+    """Clear all extraction-related cache entries."""
+    return await data_extractor.clear_extraction_cache()
 
 data_extractor = DataExtractor()
 
