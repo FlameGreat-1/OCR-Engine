@@ -35,7 +35,11 @@ class DataExtractor:
             logger.error(f"Error extracting data: {str(e)}")
             return [Invoice(filename=result.get("filename", "")) for result in ocr_results]
     
-    async def _extract_date(self, text: str) -> Optional[date]:
+    async def extract_date(self, text: str, entities: Optional[List[str]] = None) -> Optional[date]:
+        if entities:
+            entity_date = await self._extract_date_from_entities(entities)
+            if entity_date:
+                return entity_date
         
         date_patterns = [
             r'\b(\d{1,2}[/\.-]\d{1,2}[/\.-]\d{2,4})\b',
@@ -44,10 +48,18 @@ class DataExtractor:
             r'\b(\d{1,2}\s+[A-Za-z]{3,9}\.?\s+\d{2,4})\b',
             r'\b([A-Za-z]{3,9}\.?\s+\d{1,2},?\s+\d{2,4})\b',
             r'\b([A-Za-z]{3}\.?\s+[A-Za-z]{3}\.?\s+\d{2,4})\b',
-            r'\b(\d{1,2}\.\d{1,2}\.\d{2,4})\b'
+            r'\b(\d{1,2}\.\d{1,2}\.\d{2,4})\b',
+            r'\b(\d{1,2}-\d{1,2}-\d{2,4})\b',
+            r'\b(\d{1,2}\s+\d{1,2}\s+\d{2,4})\b',
+            r'\b(\d{4}\d{2}\d{2})\b',
+            r'\b(\d{2}\d{2}\d{4})\b'
         ]
         
-        date_keywords = ['date', 'invoice date', 'issue date', 'dated', 'invoice', 'issued', 'due date']
+        date_keywords = [
+            'date', 'invoice date', 'issue date', 'dated', 'invoice', 
+            'issued', 'due date', 'billing date', 'transaction date',
+            'document date', 'statement date', 'posting date'
+        ]
         
         for keyword in date_keywords:
             keyword_pattern = rf'(?i){re.escape(keyword)}[:\s]*(.{{0,50}})'
@@ -61,53 +73,22 @@ class DataExtractor:
                     for date_match in date_matches:
                         date_str = date_match.group(0)
                         
-                        try:
-                            parsed_date = await asyncio.to_thread(
-                                dateparser.parse,
-                                date_str,
-                                settings={
-                                    'DATE_ORDER': 'DMY',
-                                    'PREFER_DAY_OF_MONTH': 'first',
-                                    'RELATIVE_BASE': datetime.now(),
-                                    'PREFER_DATES_FROM': 'past'
-                                }
-                            )
-                            if parsed_date:
-                                return parsed_date.date()
-                        except Exception:
-                            pass
-                        
-                        try:
-                            parsed_date = await asyncio.to_thread(
-                                dateparser.parse,
-                                date_str,
-                                settings={
-                                    'DATE_ORDER': 'MDY',
-                                    'PREFER_DAY_OF_MONTH': 'first',
-                                    'RELATIVE_BASE': datetime.now(),
-                                    'PREFER_DATES_FROM': 'past'
-                                }
-                            )
-                            if parsed_date:
-                                return parsed_date.date()
-                        except Exception:
-                            pass
-                        
-                        try:
-                            parsed_date = await asyncio.to_thread(
-                                dateparser.parse,
-                                date_str,
-                                settings={
-                                    'DATE_ORDER': 'YMD',
-                                    'PREFER_DAY_OF_MONTH': 'first',
-                                    'RELATIVE_BASE': datetime.now(),
-                                    'PREFER_DATES_FROM': 'past'
-                                }
-                            )
-                            if parsed_date:
-                                return parsed_date.date()
-                        except Exception:
-                            pass
+                        for date_order in ['DMY', 'MDY', 'YMD']:
+                            try:
+                                parsed_date = await asyncio.to_thread(
+                                    dateparser.parse,
+                                    date_str,
+                                    settings={
+                                        'DATE_ORDER': date_order,
+                                        'PREFER_DAY_OF_MONTH': 'first',
+                                        'RELATIVE_BASE': datetime.now(),
+                                        'PREFER_DATES_FROM': 'past'
+                                    }
+                                )
+                                if parsed_date:
+                                    return parsed_date.date()
+                            except Exception:
+                                pass
         
         for pattern in date_patterns:
             matches = re.finditer(pattern, text)
@@ -146,12 +127,12 @@ class DataExtractor:
                     except ValueError:
                         pass
                 else:
-                    day, month, year = match.groups()
+                    first, second, year = match.groups()
                     try:
-                        return date(int(year), int(month), int(day))
+                        return date(int(year), int(second), int(first))
                     except ValueError:
                         try:
-                            return date(int(year), int(day), int(month))
+                            return date(int(year), int(first), int(second))
                         except ValueError:
                             pass
         
@@ -208,6 +189,46 @@ class DataExtractor:
         except Exception:
             pass
             
+        return None
+    
+    async def _extract_date_from_entities(self, entities: List[str]) -> Optional[date]:
+        for entity in entities:
+            if entity.startswith('invoice_date:') or entity.startswith('date:'):
+                date_str = entity.split(':', 1)[1].strip()
+                for date_order in ['DMY', 'MDY', 'YMD']:
+                    try:
+                        parsed_date = await asyncio.to_thread(
+                            dateparser.parse,
+                            date_str,
+                            settings={
+                                'DATE_ORDER': date_order,
+                                'PREFER_DAY_OF_MONTH': 'first',
+                                'RELATIVE_BASE': datetime.now(),
+                                'PREFER_DATES_FROM': 'past'
+                            }
+                        )
+                        if parsed_date:
+                            return parsed_date.date()
+                    except Exception:
+                        pass
+                
+                dot_date_pattern = r'\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b'
+                dot_matches = re.findall(dot_date_pattern, date_str)
+                for match in dot_matches:
+                    if len(match) == 3:
+                        day, month, year_short = match
+                        current_year = datetime.now().year
+                        century = current_year // 100
+                        year = int(f"{century}{year_short}")
+                        if year > current_year + 20:
+                            year = int(f"{century-1}{year_short}")
+                        try:
+                            return date(year, int(month), int(day))
+                        except ValueError:
+                            try:
+                                return date(year, int(day), int(month))
+                            except ValueError:
+                                pass
         return None
     
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
