@@ -209,27 +209,31 @@ class DataExtractor:
             pass
             
         return None
-
+    
     async def _extract_single_result(self, ocr_result: Dict) -> Invoice:
         try:
-            cache_key = f"extracted:{hash(str(ocr_result))}"
-            if self.redis:
-                cached_result = await self.redis.get(cache_key)
-                if cached_result:
-                    logger.info(f"Cache hit for {ocr_result.get('filename', '')}")
-                    return Invoice.parse_raw(cached_result)
+            # Disable cache lookup temporarily to force reprocessing
+            # cache_key = f"extracted:{hash(str(ocr_result))}"
+            # if self.redis:
+            #     cached_result = await self.redis.get(cache_key)
+            #     if cached_result:
+            #         logger.info(f"Cache hit for {ocr_result.get('filename', '')}")
+            #         return Invoice.parse_raw(cached_result)
 
+            # Process the document regardless of cache status
             start_time = time.time()
             invoice = await self.extract_invoice_data(ocr_result)
             end_time = time.time()
             logger.info(f"Extracted data for {ocr_result.get('filename', '')} in {end_time - start_time:.2f} seconds")
 
-            if self.redis:
-                await self.redis.set(cache_key, invoice.json(), expire=86400)
+            # Disable cache storage temporarily
+            # if self.redis:
+            #     await self.redis.set(cache_key, invoice.json(), expire=86400)
+            
             return invoice
         except Exception as e:
             logger.error(f"Error extracting data for {ocr_result.get('filename', '')}: {str(e)}")
-            return Invoice(filename=ocr_result.get("filename", ""))
+            return Invoice(filename=ocr_result.get("filename", ""))    
 
     async def extract_invoice_data(self, ocr_result: Dict, docai_result: Optional[Dict] = None) -> Invoice:
         filename = ocr_result.get('filename', '')
@@ -456,33 +460,11 @@ class DataExtractor:
             except:
                 logger.warning(f"Could not parse decimal: {amount_string}")
                 return None
-    
-    async def clear_extraction_cache(self):
-        """Clear all extraction-related cache entries from Redis."""
-        try:
-            redis = await aioredis.from_url(settings.REDIS_URL)
-            # Get all keys matching the extraction pattern
-            extraction_keys = await redis.keys("extracted:*")
-            if extraction_keys:
-                # Delete all matching keys
-                await redis.delete(*extraction_keys)
-                logger.info(f"Cleared {len(extraction_keys)} cached extraction results")
-            else:
-                logger.info("No cached extraction results found")
-            await redis.close()
-            return True
-        except Exception as e:
-            logger.error(f"Error clearing cache: {str(e)}")
-            return False
             
     async def cleanup(self):
         self.executor.shutdown(wait=True)
         if self.redis:
             await self.redis.close()
-               
-async def clear_extraction_cache():
-    """Clear all extraction-related cache entries."""
-    return await data_extractor.clear_extraction_cache()
 
 data_extractor = DataExtractor()
 
