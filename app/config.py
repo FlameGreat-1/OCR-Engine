@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Invoice Processing System"
     X_API_KEY: str = Field(..., env="X_API_KEY")
+    REQUIRE_API_KEY: bool = os.getenv("REQUIRE_API_KEY", "True").lower() in ("true", "1", "t")
+
 
     # File Upload Configuration
     MAX_UPLOAD_SIZE: int = 100 * 1024 * 1024  # 100MB
@@ -22,7 +24,7 @@ class Settings(BaseSettings):
     MULTI_PAGE_THRESHOLD: float = 0.95  # 95% confidence for multi-page detection
     INVOICE_NUMBER_ACCURACY: float = 0.95  # 95% accuracy for invoice number extraction
     TOTAL_MATH_ACCURACY: float = 1.0  # 100% accuracy for total calculations
-    MAX_WORKERS: int = Field(default=2, env="MAX_WORKERS")  # Reduced from 5 to 2
+    MAX_WORKERS: int = Field(default=2, env="MAX_WORKERS")  # can be increased to 5
 
     # Output Configuration
     OUTPUT_FORMATS: List[str] = Field(default=["csv", "excel"])
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
     # Google Cloud Vision Configuration
     GCV_CREDENTIALS: str = Field(..., env="GOOGLE_APPLICATION_CREDENTIALS")
     DOCAI_PROCESSOR_NAME: str = Field(..., env="DOCAI_PROCESSOR_NAME")
+    DOCAI_ENDPOINT: str = Field(default="documentai.googleapis.com", env="GOOGLE_CLOUD_DOCUMENTAI_ENDPOINT")
 
     # invoice2data Configuration
     INVOICE2DATA_TEMPLATES_DIR: str = Field(default="/app/invoice_templates", env="INVOICE2DATA_TEMPLATES_DIR")

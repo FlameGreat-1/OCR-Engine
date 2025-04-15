@@ -31,6 +31,13 @@ class InvoiceValidator:
         is_valid = len(all_warnings) == 0
 
         return is_valid, all_warnings, warnings
+    
+    def validate_invoices(self, invoices: List[Invoice]) -> List[Tuple[Invoice, List[str], Dict[str, List[str]]]]:
+        results = []
+        for invoice in invoices:
+            is_valid, warnings, categorized_warnings = self.validate_invoice(invoice)
+            results.append((invoice, warnings, categorized_warnings))
+        return results
 
     def _validate_filename(self, filename: str) -> List[str]:
         warnings = []
@@ -140,21 +147,27 @@ def validate_invoice_batch(invoices: List[Dict]) -> List[Tuple[Dict, bool, List[
         results.append((invoice_data, is_valid, warnings, categorized_warnings))
     return results
 
+
 def flag_anomalies(invoices: List[Invoice]) -> List[Dict]:
     flagged_invoices = []
     for invoice in invoices:
         flags = []
         
-        if invoice.invoice_date > date.today():
+        # Check for future date with null check
+        if invoice.invoice_date is not None and invoice.invoice_date > date.today():
             flags.append("Future date")
 
-        if invoice.final_total > Decimal('10000.00'):
+        # Check for high total amount with null check
+        if invoice.final_total is not None and invoice.final_total > Decimal('10000.00'):
             flags.append("Unusually high total amount")
 
-        if len(invoice.items) > 20:
+        # Check for large number of line items with null check
+        if invoice.items is not None and len(invoice.items) > 20:
             flags.append("Large number of line items")
 
+        # Only add to flagged_invoices if there are flags
         if flags:
             flagged_invoices.append({**invoice.dict(), 'flags': flags})
 
     return flagged_invoices
+

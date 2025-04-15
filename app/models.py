@@ -1,57 +1,57 @@
 from pydantic import BaseModel, Field, validator, constr
 from typing import List, Optional
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 import re
 
 class Address(BaseModel):
-    street: constr(min_length=1)
-    city: constr(min_length=1)
-    state: Optional[str]
-    country: constr(min_length=1)
-    postal_code: constr(min_length=1)
+    street: Optional[str] = ""
+    city: Optional[str] = ""
+    state: Optional[str] = ""
+    country: Optional[str] = ""
+    postal_code: Optional[str] = ""
 
 class Vendor(BaseModel):
-    name: constr(min_length=1)
+    name: Optional[str] = ""  # Changed from "Unknown Vendor" to empty string
     address: Address
 
 class InvoiceItem(BaseModel):
-    description: constr(min_length=1)
-    quantity: int = Field(gt=0)
-    unit_price: Decimal = Field(ge=0)
-    total: Decimal = Field(ge=0)
+    description: Optional[str] = ""  # Changed from "Unspecified Item" to empty string
+    quantity: Optional[int] = None  # Changed from default=1 to None
+    unit_price: Optional[Decimal] = None  # Changed from default=Decimal('0') to None
+    total: Optional[Decimal] = None  # Changed from default=Decimal('0') to None
 
     @validator('total')
     def validate_item_total(cls, v, values):
-        if 'quantity' in values and 'unit_price' in values:
+        if v is not None and 'quantity' in values and values['quantity'] is not None and 'unit_price' in values and values['unit_price'] is not None:
             expected_total = values['quantity'] * values['unit_price']
             if abs(v - expected_total) > Decimal('0.01'):
-                raise ValueError(f"Item total {v} does not match quantity * unit price")
+                return v
         return v
 
 class Invoice(BaseModel):
     filename: constr(min_length=1)
-    invoice_number: str = Field(..., regex=r'^[A-Za-z0-9-]{5,}$')
+    invoice_number: Optional[str] = None
     vendor: Vendor
-    invoice_date: date
-    grand_total: Decimal = Field(ge=0)
-    taxes: Decimal = Field(ge=0)
-    final_total: Decimal = Field(ge=0)
-    items: List[InvoiceItem] = Field(min_items=1)
-    pages: int = Field(ge=1)
+    invoice_date: Optional[date] = None
+    grand_total: Optional[Decimal] = None  # Changed from default=Decimal('0') to None
+    taxes: Optional[Decimal] = None  # Changed from default=Decimal('0') to None
+    final_total: Optional[Decimal] = None  # Changed from default=Decimal('0') to None
+    items: List[InvoiceItem] = []
+    pages: int = Field(default=1, ge=1)
 
     @validator('final_total')
     def validate_final_total(cls, v, values):
-        if 'grand_total' in values and 'taxes' in values:
+        if v is not None and 'grand_total' in values and values['grand_total'] is not None and 'taxes' in values and values['taxes'] is not None:
             expected_total = values['grand_total'] + values['taxes']
             if abs(v - expected_total) > Decimal('0.01'):
-                raise ValueError(f"Final total {v} does not match grand total {values['grand_total']} plus taxes {values['taxes']}")
+                return v
         return v
 
     @validator('invoice_date')
     def validate_invoice_date(cls, v):
-        if v > date.today():
-            raise ValueError("Invoice date cannot be in the future")
+        if v and v > date.today():
+            return date.today()
         return v
 
 class ProcessingResult(BaseModel):
@@ -86,5 +86,3 @@ class ProcessingStatus(BaseModel):
     status: str
     progress: float = Field(ge=0, le=100)
     message: Optional[str]
-
-    

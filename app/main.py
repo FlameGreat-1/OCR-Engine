@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Depends, Request, status
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.security import APIKeyHeader, HTTPBasic, HTTPBasicCredentials
+from fastapi.security import APIKeyHeader, HTTPBasicCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.templating import Jinja2Templates
@@ -15,13 +15,16 @@ import shutil
 import secrets
 import logging
 from app.config import settings
+from datetime import date
 from app.utils.file_handler import FileHandler
 from app.utils.ocr_engine import ocr_engine
 from app.utils.ocr_engine import initialize_ocr_engine, cleanup_ocr_engine
-from app.utils.data_extractor import data_extractor
 from app.utils.validator import invoice_validator, flag_anomalies
 from app.utils.exporter import export_invoices
 from app.models import Invoice, ProcessingStatus
+from app.utils.data_extractor import data_extractor, extract_invoice_data
+from app.utils.data_extractor import initialize_data_extractor, cleanup_data_extractor
+
 
 # Initialize FastAPI app
 app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
@@ -29,11 +32,13 @@ app = FastAPI(title=settings.PROJECT_NAME, version="1.0.0")
 # Add middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.ALLOWED_HOSTS)
 
 # Set up logging
@@ -43,7 +48,6 @@ logger = logging.getLogger(__name__)
 # Initialize utilities
 file_handler = FileHandler()
 api_key_header = APIKeyHeader(name="X-API-Key")
-security = HTTPBasic()
 
 # Define models
 class ProcessingRequest(BaseModel):
@@ -57,22 +61,15 @@ class ProcessingResponse(BaseModel):
 processing_tasks = {}
 direct_results = {}
 
-# Helper functions
 def get_api_key(api_key: str = Depends(api_key_header)):
+    # Skip validation if REQUIRE_API_KEY is False
+    if not settings.REQUIRE_API_KEY:
+        return None  
+        
+    # Normal validation when REQUIRE_API_KEY is True
     if api_key != settings.X_API_KEY:  
         raise HTTPException(status_code=403, detail="Could not validate API key")
     return api_key
-
-def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
-    correct_username = secrets.compare_digest(credentials.username, "admin")
-    correct_password = secrets.compare_digest(credentials.password, "password")
-    if not (correct_username and correct_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 def get_file_type(filename):
     ext = os.path.splitext(filename)[1].lower()
@@ -86,15 +83,17 @@ def get_file_type(filename):
         return "application/zip"
     return None
     
-# Processing functions
 async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
     logger.info(f"Starting direct processing for task {task_id}")
     
     try:
+        # Set initial status
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Starting processing")
         
+        # Process file
         processed_files = await file_handler.process_upload(file_path)
         logger.info(f"File processed: {file_path}")
+        # Update progress to 20%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=20, message="File processed")
         
         all_extracted_data = []
@@ -102,22 +101,28 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
         
         for i, file_batch in enumerate(processed_files):
             ocr_results = await ocr_engine.process_documents([file_batch])
-            batch_data = await asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()])
+            batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
-            progress = 20 + (i / total_files * 40)
+            # Calculate progress between 20% and 60%
+            progress = 20 + ((i + 1) / total_files * 40)
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {i+1}/{total_files} files')
         
         logger.info("OCR and Data extraction completed")
+        # Update progress to 60%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoices(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
-        validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
+        validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
+        # Update progress to 80%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
+        
+        # Update progress to 90%
+        processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=90, message="Generating reports")
         
         flagged_invoices = flag_anomalies(validated_data)
         
@@ -128,8 +133,9 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
             invoice_data['anomaly_flags'] = [flag for flagged in flagged_invoices if flagged['invoice_number'] == invoice.invoice_number for flag in flagged['flags']]
             export_data.append(invoice_data)
         
-        csv_output = export_invoices(export_data, 'csv')
-        excel_output = export_invoices(export_data, 'excel')
+        invoices = [Invoice.parse_obj(data) for data in export_data]
+        csv_output = await export_invoices(invoices, 'csv')
+        excel_output = await export_invoices(invoices, 'excel')
         
         csv_path = os.path.join(temp_dir, f"{task_id}_invoices.csv")
         excel_path = os.path.join(temp_dir, f"{task_id}_invoices.xlsx")
@@ -154,6 +160,7 @@ async def process_file_directly(task_id: str, file_path: str, temp_dir: str):
             'anomalies': flagged_invoices
         }
         
+        # Final update - completed
         processing_tasks[task_id] = ProcessingStatus(status="Completed", progress=100, message="Processing completed")
         direct_results[task_id] = result
         
@@ -169,12 +176,14 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
     logger.info(f"Starting direct processing for multiple files, task {task_id}")
     
     try:
+        # Set initial status
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=0, message="Starting processing")
         
         processed_files = []
         for idx, file_path in enumerate(file_paths):
             processed_files.extend(await file_handler.process_upload(file_path))
-            progress = (idx + 1) / len(file_paths) * 20
+            # Calculate progress up to 20%
+            progress = ((idx + 1) / len(file_paths) * 20)
             logger.info(f"Processed file {idx + 1} of {len(file_paths)}: {file_path}")
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {idx + 1} of {len(file_paths)} files')
@@ -184,22 +193,28 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
         
         for i, file_batch in enumerate(processed_files):
             ocr_results = await ocr_engine.process_documents([file_batch])
-            batch_data = await asyncio.gather(*[data_extractor.extract_data(result) for result in ocr_results.values()])
+            batch_data = [Invoice.parse_obj(result) for result in ocr_results.values()]
             all_extracted_data.extend(batch_data)
             
-            progress = 20 + (i / total_batches * 40)
+            # Calculate progress between 20% and 60%
+            progress = 20 + ((i + 1) / total_batches * 40)
             processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=int(progress), 
                                                         message=f'Processed {i+1}/{total_batches} batches')
         
         logger.info("OCR and Data extraction completed")
+        # Update progress to 60%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=60, message="OCR and Data extraction completed")
         
-        validation_results = invoice_validator.validate_invoice_batch(all_extracted_data)
+        validation_results = invoice_validator.validate_invoices(all_extracted_data)
         validated_data = [invoice for invoice, _, _ in validation_results]
-        validation_warnings = {invoice['invoice_number']: warnings for invoice, _, warnings in validation_results}
+        validation_warnings = {invoice.invoice_number: warnings for invoice, _, warnings in validation_results}
         
         logger.info("Validation completed")
+        # Update progress to 80%
         processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=80, message="Validation completed")
+        
+        # Update progress to 90%
+        processing_tasks[task_id] = ProcessingStatus(status="Processing", progress=90, message="Generating reports")
         
         flagged_invoices = flag_anomalies(validated_data)
         
@@ -210,8 +225,9 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
             invoice_data['anomaly_flags'] = [flag for flagged in flagged_invoices if flagged['invoice_number'] == invoice.invoice_number for flag in flagged['flags']]
             export_data.append(invoice_data)
         
-        csv_output = export_invoices(export_data, 'csv')
-        excel_output = export_invoices(export_data, 'excel')
+        invoices = [Invoice.parse_obj(data) for data in export_data]
+        csv_output = await export_invoices(invoices, 'csv')
+        excel_output = await export_invoices(invoices, 'excel')
         
         csv_path = os.path.join(temp_dir, f"{task_id}_invoices.csv")
         excel_path = os.path.join(temp_dir, f"{task_id}_invoices.xlsx")
@@ -236,6 +252,7 @@ async def process_multiple_files_directly(task_id: str, file_paths: List[str], t
             'anomalies': flagged_invoices
         }
         
+        # Final update - completed
         processing_tasks[task_id] = ProcessingStatus(status="Completed", progress=100, message="Processing completed")
         direct_results[task_id] = result
         
@@ -375,10 +392,6 @@ def check_task(task_id: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-@app.get("/api-key")
-def read_api_key(username: str = Depends(get_current_username)):
-    return {"api_key": settings.X_API_KEY}
     
 # Set up templates and static files
 templates = Jinja2Templates(directory="template")
@@ -387,7 +400,10 @@ app.mount("/static", StaticFiles(directory="template"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    return templates.TemplateResponse("testing_ui.html", {"request": request})
+    return templates.TemplateResponse("testing_ui.html", {
+        "request": request,
+        "api_key": settings.X_API_KEY  
+    })
 
 @app.on_event("startup")
 async def startup_event():
@@ -395,9 +411,10 @@ async def startup_event():
         logger.info("Application is starting up")
         try:
             await initialize_ocr_engine()
-            logger.info("OCR engine initialized successfully")
+            await initialize_data_extractor()
+            logger.info("OCR engine and data extractor initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize OCR engine: {str(e)}")
+            logger.error(f"Failed to initialize components: {str(e)}")
     except Exception as e:
         logger.error(f"Error during application startup: {str(e)}")
 
@@ -405,6 +422,7 @@ async def startup_event():
 async def shutdown_event():
     logger.info("Application is shutting down")
     await cleanup_ocr_engine()  
+    await cleanup_data_extractor()
     
 if __name__ == "__main__":
     import uvicorn
